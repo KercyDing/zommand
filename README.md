@@ -4,15 +4,15 @@ A tiny tool for better control over your Zig projects.
 
 ## Prerequisites
 
-- **[Zig](https://ziglang.org/download)** (master)
+- **[Mise](https://github.com/jdx/mise)** (pin the zig & zls version)
 - [Only](https://github.com/KercyDing/only) (task runner if you like)
 
 ## Usage
 
 ```bash
-zig build run -- fetch https://github.com/opencv/opencv/archive/refs/tags/5.0.0.tar.gz
+zig build run -- fetch --save https://github.com/zigtools/zls/archive/refs/tags/0.16.0.tar.gz
 # or:
-# only br fetch https://github.com/opencv/opencv/archive/refs/tags/5.0.0.tar.gz
+# only br fetch --save https://github.com/zigtools/zls/archive/refs/tags/0.16.0.tar.gz
 ```
 
 ## A Few Thoughts

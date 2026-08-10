@@ -66,7 +66,7 @@ pub fn build(b: *std.Build) void {
 }
 
 comptime {
-    const minimum_zig_version = "0.17.0-dev.1426+58a94eaae";
+    const minimum_zig_version = "0.17.0-dev.1662+cc6f42302";
     const minimum = std.SemanticVersion.parse(minimum_zig_version) catch unreachable;
 
     if (builtin.zig_version.order(minimum) == .lt) {

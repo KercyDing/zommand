@@ -1,17 +1,15 @@
-# Build and run the zis with args
+# Debug build and run the zis with args
 // Example:
-// only br fetch https://github.com/opencv/opencv/archive/refs/tags/5.0.0.tar.gz
+// only br fetch --save https://github.com/zigtools/zls/archive/refs/tags/0.16.0.tar.gz
 br(args..):
     zig build run -- {{ args }}
 
-# Publish and run the zis with args
-pr(args..) & p:
-    ./zig-out/bin/zis {{ args }}
+_prebuild():
+    zig build -Doptimize=ReleaseFast -Dstrip=true -Dstatic=false
 
-# Publish the zis
-p(static="false"):
-    zig build -Doptimize=ReleaseFast -Dstrip=true -Dstatic={{ static }}
-    echo 'zis has been published.'
+# Release run the zis with args
+rr(args..) & _prebuild:
+    ./zig-out/bin/zis {{ args }}
 
 # Test the zis
 t():
@@ -30,13 +28,13 @@ f():
     echo 'Formatted.'
 
 # Install the local zis binary
-i() ? @os("windows") & p shell?=pwsh:
+i() ? @os("windows") & _prebuild shell?=pwsh:
     New-Item -ItemType Directory -Force -Path (Join-Path $env:LOCALAPPDATA "Programs\Zis") | Out-Null
     Copy-Item ./zig-out/bin/zis.exe -Destination (Join-Path $env:TEMP "zis-install-staged.exe") -Force
     $parentPid = (Get-CimInstance Win32_Process -Filter "ProcessId=$PID").ParentProcessId; $shellPath = (Get-Process -Id $PID).Path; $stagedPath = Join-Path $env:TEMP "zis-install-staged.exe"; $installPath = Join-Path $env:LOCALAPPDATA "Programs\Zis\zis.exe"; $script = "Wait-Process -Id $parentPid; Copy-Item -LiteralPath '$stagedPath' -Destination '$installPath' -Force; Remove-Item -LiteralPath '$stagedPath' -Force"; $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($script)); Start-Process -WindowStyle Hidden -FilePath $shellPath -ArgumentList "-NoProfile", "-EncodedCommand", $encoded
     Write-Output "Installed zis to: $(Join-Path $env:LOCALAPPDATA "Programs\Zis\zis.exe")"
 
-i() & p:
+i() & _prebuild:
     mkdir -p "$HOME/.local/bin"
     cp ./zig-out/bin/zis "$HOME/.local/bin/.zis-install"
     chmod +x "$HOME/.local/bin/.zis-install"
