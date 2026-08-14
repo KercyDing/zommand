@@ -5,7 +5,7 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
     const strip = b.option(bool, "strip", "Strip debug symbols") orelse false;
-    const static = b.option(bool, "static", "Link libcurl statically") orelse false;
+    const static = b.option(bool, "static", "Link libcurl statically") orelse true;
 
     const command_dep = b.dependency("libcommand", .{
         .target = target,
@@ -19,9 +19,7 @@ pub fn build(b: *std.Build) void {
     const curl_dep = b.dependency("curl", .{
         .target = target,
         .optimize = optimize,
-        // Static linking would make the size of bin too big!
-        // Dynamic linking would affect a little of performance.
-        // So the default setting is dynamic.
+        // The default setting is static.
         .link_vendor = static,
     });
 
@@ -36,7 +34,7 @@ pub fn build(b: *std.Build) void {
         },
     });
 
-    if (static) {
+    if (!static) {
         exe_mod.linkSystemLibrary("curl", .{});
     }
 
@@ -60,13 +58,15 @@ pub fn build(b: *std.Build) void {
     run_step.dependOn(&run_cmd.step);
     run_cmd.step.dependOn(b.getInstallStep());
 
-    run_cmd.addPassthruArgs();
+    if (b.args) |args| {
+        run_cmd.addArgs(args);
+    }
 
     run_step.dependOn(&run_cmd.step);
 }
 
 comptime {
-    const minimum_zig_version = "0.17.0-dev.1662+cc6f42302";
+    const minimum_zig_version = "0.16.0";
     const minimum = std.SemanticVersion.parse(minimum_zig_version) catch unreachable;
 
     if (builtin.zig_version.order(minimum) == .lt) {

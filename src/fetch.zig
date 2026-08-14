@@ -124,7 +124,7 @@ pub fn runFetch(
         defer allocator.free(init_result.stdout);
         defer allocator.free(init_result.stderr);
 
-        if (!init_result.term.success()) {
+        if (!termSucceeded(init_result.term)) {
             if (init_result.stderr.len != 0) {
                 std.debug.print("{s}", .{init_result.stderr});
             }
@@ -152,7 +152,6 @@ pub fn runFetch(
     defer easy.deinit();
 
     try easy.setFollowLocation(true);
-    try easy.setMaxRedirects(10);
 
     std.debug.print("Fetching...\n", .{});
 
@@ -194,7 +193,7 @@ pub fn runFetch(
     defer allocator.free(result.stdout);
     defer allocator.free(result.stderr);
 
-    if (!result.term.success()) {
+    if (!termSucceeded(result.term)) {
         if (result.stderr.len != 0) {
             std.debug.print("{s}", .{result.stderr});
         }
@@ -278,7 +277,7 @@ fn dependencyFromZon(
     var ast = try std.zig.Ast.parse(
         allocator,
         source,
-        .{ .mode = .zon },
+        .zon,
     );
     defer ast.deinit(allocator);
 
@@ -368,6 +367,13 @@ fn dependencyFromZon(
     }
 
     return error.DependencyNotFound;
+}
+
+fn termSucceeded(term: std.process.Child.Term) bool {
+    return switch (term) {
+        .exited => |code| code == 0,
+        else => false,
+    };
 }
 
 /// Get file name from the given URL.

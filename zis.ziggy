@@ -1,31 +1,31 @@
-.{
+{
     .name = "zis",
     .version = "0.0.1",
     .about = "A tiny tool for better control over your Zig projects.",
     .commands = [
-        .{
+        {
             .name = "fetch",
             .about = "Fetch a package and print hash",
             .args = [
                 // Usage:
                 // zis fetch <url>
-                .positional(.{
+                positional {
                     .id = "url",
                     .help = "Package repository URL",
                     .required = true,
-                }),
+                },
                 // Usage:
                 // zis fetch --save <url>
                 // or:
                 // zis fetch -s <url>
-                .flag(.{
+                flag {
                     .id = "save",
                     .short = "s",
                     .help = "Print full dependency",
-                }),
+                },
             ],
         },
-        .{
+        {
             .name = "init",
             .about = "Initialize a project from a template",
             .args = [
@@ -33,11 +33,11 @@
                 // zis init --path <PATH>
                 // or:
                 // zis init -p <PATH>
-                .option(.{
+                option {
                     .id = "path",
                     .short = "p",
                     .help = "Template directory",
-                }),
+                },
             ],
         },
     ],

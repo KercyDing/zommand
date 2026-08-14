@@ -9,29 +9,21 @@ pub fn parse(
     path: []const u8,
     source: [:0]const u8,
 ) !schema.Cli {
-    var meta: ziggy.Deserializer.Meta = .init;
-    const options: ziggy.Deserializer.Options = .{};
+    var diagnostic: ziggy.Diagnostic = .{ .path = path };
+    defer diagnostic.deinit(allocator);
+    const options: ziggy.ParseOptions = .{ .diagnostic = &diagnostic };
 
-    return ziggy.deserializeLeaky(
+    return ziggy.parseLeaky(
         schema.Cli,
         allocator,
         source,
-        &meta,
         options,
     ) catch |err| {
         if (err == error.OutOfMemory) return err;
 
         var buffer: [4096]u8 = undefined;
         var stderr: std.Io.File.Writer = .init(.stderr(), io, &buffer);
-        try meta.reportErrors(
-            allocator,
-            options,
-            path,
-            source,
-            err,
-            &stderr.interface,
-        );
-        try stderr.interface.writeByte('\n');
+        try stderr.interface.print("{f}\n", .{diagnostic.fmt(source)});
         try stderr.interface.flush();
         return error.InvalidSchema;
     };

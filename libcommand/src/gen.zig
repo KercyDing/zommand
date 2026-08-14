@@ -62,7 +62,7 @@ fn makeResultType(comptime cli: schema.Cli) type {
     var field_names: [field_count][]const u8 = undefined;
     var field_types: [field_count]type = undefined;
     var field_values: [field_count]u32 = undefined;
-    var field_attrs: [field_count]std.builtin.Type.Union.FieldAttributes = @splat(.{});
+    var field_attrs: [field_count]std.builtin.Type.UnionField.Attributes = @splat(.{});
 
     for (cli.commands, 0..) |cmd, i| {
         field_names[i] = cmd.name;
@@ -93,7 +93,7 @@ fn makeCommandType(comptime command: schema.Command) type {
 
     var field_names: [field_count][]const u8 = undefined;
     var field_types: [field_count]type = undefined;
-    var field_attrs: [field_count]std.builtin.Type.Struct.FieldAttributes = @splat(.{});
+    var field_attrs: [field_count]std.builtin.Type.StructField.Attributes = @splat(.{});
 
     for (command.args, 0..) |arg, i| {
         field_names[i] = switch (arg) {
