@@ -5,16 +5,11 @@ br(args..):
     zig build run -- {{ args }}
 
 _prebuild():
-    zig build -Doptimize=ReleaseFast -Dstrip=true -Dstatic=false
+    zig build -Doptimize=ReleaseFast -Dstrip=true -Dstatic=true
 
 # Release run the zis with args
 rr(args..) & _prebuild:
     ./zig-out/bin/zis {{ args }}
-
-# Test the zis
-t():
-    zig build test
-    echo 'zis passed all the tests.'
 
 # Clean the zis
 c():
@@ -30,6 +25,7 @@ f():
 # Install the local zis binary
 i() ? @os("windows") & _prebuild shell?=pwsh:
     New-Item -ItemType Directory -Force -Path (Join-Path $env:LOCALAPPDATA "Programs\Zis") | Out-Null
+    $installDir = Join-Path $env:LOCALAPPDATA "Programs\Zis"; $userPath = [Environment]::GetEnvironmentVariable("Path", "User"); if (($userPath -split ";") -notcontains $installDir) { $newPath = if ([string]::IsNullOrWhiteSpace($userPath)) { $installDir } else { $userPath.TrimEnd(";") + ";" + $installDir }; [Environment]::SetEnvironmentVariable("Path", $newPath, "User"); Write-Output "Added zis install directory to the user PATH. Reopen the terminal to apply it." }
     Copy-Item ./zig-out/bin/zis.exe -Destination (Join-Path $env:TEMP "zis-install-staged.exe") -Force
     $parentPid = (Get-CimInstance Win32_Process -Filter "ProcessId=$PID").ParentProcessId; $shellPath = (Get-Process -Id $PID).Path; $stagedPath = Join-Path $env:TEMP "zis-install-staged.exe"; $installPath = Join-Path $env:LOCALAPPDATA "Programs\Zis\zis.exe"; $script = "Wait-Process -Id $parentPid; Copy-Item -LiteralPath '$stagedPath' -Destination '$installPath' -Force; Remove-Item -LiteralPath '$stagedPath' -Force"; $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($script)); Start-Process -WindowStyle Hidden -FilePath $shellPath -ArgumentList "-NoProfile", "-EncodedCommand", $encoded
     Write-Output "Installed zis to: $(Join-Path $env:LOCALAPPDATA "Programs\Zis\zis.exe")"
