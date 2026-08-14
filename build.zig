@@ -63,6 +63,22 @@ pub fn build(b: *std.Build) void {
     }
 
     run_step.dependOn(&run_cmd.step);
+
+    const init_test_mod = b.createModule(.{
+        .root_source_file = b.path("src/init.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "zis_schema", .module = schema_mod },
+        },
+    });
+    const init_tests = b.addTest(.{
+        .root_module = init_test_mod,
+    });
+    const run_init_tests = b.addRunArtifact(init_tests);
+
+    const test_step = b.step("test", "Run tests");
+    test_step.dependOn(&run_init_tests.step);
 }
 
 comptime {

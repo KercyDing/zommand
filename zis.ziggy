@@ -30,13 +30,21 @@
             .about = "Initialize a project from a template",
             .args = [
                 // Usage:
-                // zis init --path <PATH>
+                // zis init <name>
+                positional {
+                    .id = "name",
+                    .help = "Project name",
+                    .required = true,
+                },
+                // Usage:
+                // zis init <name> --template <TEMPLATE>
                 // or:
-                // zis init -p <PATH>
+                // zis init <name> -t <TEMPLATE>
                 option {
-                    .id = "path",
-                    .short = "p",
-                    .help = "Template directory",
+                    .id = "template",
+                    .short = "t",
+                    .help = "Template name to use or create (default: global)",
+                    .default = "global",
                 },
             ],
         },
