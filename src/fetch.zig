@@ -277,7 +277,7 @@ fn dependencyFromZon(
     var ast = try std.zig.Ast.parse(
         allocator,
         source,
-        .zon,
+        .{ .mode = .zon },
     );
     defer ast.deinit(allocator);
 

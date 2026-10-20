@@ -7,8 +7,8 @@
             .path = "libcommand",
         },
         .curl = .{
-            .url = "git+https://github.com/jiacai2050/zig-curl.git#f701e602d962e149338521e9848528a372c05966",
-            .hash = "curl-0.5.1-P4tT4VsCAQBQ_kA6SBylS7sDyKXdcnuv-13p21ZNx8Az",
+            .url = "git+https://github.com/jiacai2050/zig-curl?ref=main#9c0f1d211ad22dd0f4c20aa54060c1d9f163595a",
+            .hash = "curl-0.6.0-dev-P4tT4W7_AAAEPibcTLuVEkwsmt61vws3n0pBs0DpAmv9",
         },
     },
     .paths = .{
