@@ -26,7 +26,7 @@ pub fn build(b: *std.Build) void {
         },
     });
     const codegen = b.addExecutable(.{
-        .name = "command-codegen",
+        .name = "codegen",
         .root_module = codegen_mod,
     });
     b.installArtifact(codegen);
@@ -37,6 +37,31 @@ pub fn build(b: *std.Build) void {
 
     const test_step = b.step("test", "Run zommand tests");
     test_step.dependOn(&b.addRunArtifact(lib_tests).step);
+}
+
+/// Creates a module from a `.zon` CLI schema.
+pub fn createCli(
+    b: *std.Build,
+    options: struct {
+        target: std.Build.ResolvedTarget,
+        optimize: std.lang.Optimize,
+        schema: std.Build.LazyPath,
+    },
+) *std.Build.Module {
+    const dependency = b.dependency("zommand", .{
+        .target = options.target,
+        .optimize = options.optimize,
+    });
+
+    const generate = b.addRunArtifact(dependency.artifact("codegen"));
+    generate.addFileArg(options.schema);
+
+    return b.createModule(.{
+        .root_source_file = generate.addOutputFileArg("cli.zig"),
+        .imports = &.{
+            .{ .name = "command", .module = dependency.module("command") },
+        },
+    });
 }
 
 comptime {

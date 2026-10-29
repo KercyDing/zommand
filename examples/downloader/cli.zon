@@ -1,0 +1,27 @@
+.{
+    .name = "downloader",
+    .about = "Download a file.",
+    .commands = .{
+        .{
+            .name = "download",
+            .about = "Download a file",
+            .args = .{
+                .{
+                    .positional = .{
+                        .id = "url",
+                        .help = "File URL",
+                        .required = true,
+                    },
+                },
+                .{
+                    .option = .{
+                        .id = "path",
+                        .short = "p",
+                        .help = "Directory to save the file (default: .)",
+                        .default = ".",
+                    },
+                },
+            },
+        },
+    },
+}

@@ -1,21 +1,14 @@
 const std = @import("std");
+const zommand = @import("zommand");
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize: std.lang.Optimize = .fast;
 
-    const zommand = b.dependency("zommand", .{
+    const cli = zommand.createCli(b, .{
         .target = target,
         .optimize = optimize,
-    });
-
-    const generate = b.addRunArtifact(zommand.artifact("command-codegen"));
-    generate.addFileArg(b.path("src/cli.zon"));
-    const cli = b.createModule(.{
-        .root_source_file = generate.addOutputFileArg("cli.zig"),
-        .imports = &.{
-            .{ .name = "command", .module = zommand.module("command") },
-        },
+        .schema = b.path("cli.zon"),
     });
 
     const exe_mod = b.createModule(.{

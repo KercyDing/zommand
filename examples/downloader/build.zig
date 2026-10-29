@@ -1,27 +1,19 @@
 const std = @import("std");
+const zommand = @import("zommand");
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize: std.lang.Optimize = .fast;
 
-    const zommand = b.dependency("zommand", .{
+    const cli = zommand.createCli(b, .{
         .target = target,
         .optimize = optimize,
+        .schema = b.path("cli.zon"),
     });
 
-    const generate = b.addRunArtifact(zommand.artifact("command-codegen"));
-    generate.addFileArg(b.path("src/cli.zon"));
-    const cli = b.createModule(.{
-        .root_source_file = generate.addOutputFileArg("cli.zig"),
-        .imports = &.{
-            .{ .name = "command", .module = zommand.module("command") },
-        },
-    });
-
-    const curl = b.dependency("curl", .{
+    const dusty = b.dependency("dusty", .{
         .target = target,
         .optimize = optimize,
-        .link_vendor = true,
     });
 
     const exe_mod = b.createModule(.{
@@ -30,12 +22,12 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .imports = &.{
             .{ .name = "cli", .module = cli },
-            .{ .name = "curl", .module = curl.module("curl") },
+            .{ .name = "dusty", .module = dusty.module("dusty") },
         },
     });
 
     const exe = b.addExecutable(.{
-        .name = "pack-fetch",
+        .name = "downloader",
         .root_module = exe_mod,
     });
     b.installArtifact(exe);
@@ -46,13 +38,13 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .imports = &.{
             .{ .name = "cli", .module = cli },
-            .{ .name = "curl", .module = curl.module("curl") },
+            .{ .name = "dusty", .module = dusty.module("dusty") },
         },
     });
     const tests = b.addTest(.{
         .root_module = test_mod,
     });
 
-    const test_step = b.step("test", "Run pack-fetch tests");
+    const test_step = b.step("test", "Run downloader tests");
     test_step.dependOn(&b.addRunArtifact(tests).step);
 }
