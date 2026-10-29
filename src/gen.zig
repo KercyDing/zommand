@@ -5,6 +5,7 @@ const help = @import("help.zig");
 
 const ARG_COUNT_MAX = 64;
 
+/// Errors returned when parsing process arguments fails.
 pub const ParseError = error{
     OutOfMemory,
     ArgumentsUnavailable,
@@ -15,18 +16,23 @@ pub const ParseError = error{
     TooManyArguments,
 };
 
+/// Generates a typed parser for a CLI schema and application result union.
+///
+/// The result union must contain one field for each command in `cli`.
 pub fn Generate(comptime cli: schema.Cli, comptime ResultType: type) type {
     validateResult(cli, ResultType);
 
     return struct {
+        /// The application result union returned by `parse`.
         pub const Result = ResultType;
 
+        /// Returns the program name declared in the CLI schema.
         pub fn programName() []const u8 {
             return cli.name;
         }
 
-        /// Parses process arguments. `arena` must be arena-style: the returned
-        /// result borrows the converted argument strings.
+        /// Parses process arguments. `arena` owns converted argument strings
+        /// referenced by the returned result.
         pub fn parse(
             io: std.Io,
             arena: std.mem.Allocator,
@@ -64,7 +70,7 @@ pub fn Generate(comptime cli: schema.Cli, comptime ResultType: type) type {
             };
         }
 
-        /// Writes help for the program, or for `command` when provided.
+        /// Writes program help or command help to `writer`.
         pub fn writeHelp(
             writer: *std.Io.Writer,
             comptime command: ?schema.Command,

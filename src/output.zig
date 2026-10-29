@@ -1,7 +1,9 @@
 const std = @import("std");
 
+/// Destination stream used by output helpers.
 pub const Stream = enum { stdout, stderr };
 
+/// Writes formatted output through a buffered file writer and flushes it.
 pub fn write(
     io: std.Io,
     comptime stream: Stream,
@@ -14,6 +16,7 @@ pub fn write(
     file_writer.interface.flush() catch {};
 }
 
+/// Prints formatted output through a buffered file writer and flushes it.
 pub fn print(
     io: std.Io,
     comptime stream: Stream,

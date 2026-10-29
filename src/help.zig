@@ -2,6 +2,7 @@ const std = @import("std");
 const schema = @import("schema.zig");
 const output = @import("output.zig");
 
+/// Writes program or command help to `writer`.
 pub fn write(
     comptime cli: schema.Cli,
     comptime command: ?schema.Command,
@@ -14,6 +15,7 @@ pub fn write(
     }
 }
 
+/// Prints program or command help to stdout and exits successfully.
 pub fn show(
     io: std.Io,
     comptime cli: schema.Cli,
