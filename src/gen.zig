@@ -1,5 +1,7 @@
 const std = @import("std");
 const schema = @import("schema.zig");
+const output = @import("output.zig");
+const help = @import("help.zig");
 
 const ARG_COUNT_MAX = 64;
 
@@ -46,14 +48,20 @@ pub fn Generate(comptime cli: schema.Cli, comptime ResultType: type) type {
                 if (slice.len >= 2) {
                     inline for (cli.commands) |command| {
                         if (std.mem.eql(u8, slice[1], command.name)) {
-                            printHelp(io, command);
+                            help.show(io, cli, command);
                         }
                     }
                 }
-                printHelp(io, null);
+                help.show(io, cli, null);
             }
 
-            return parseSlice(arena, slice);
+            return parseSlice(arena, slice) catch |err| switch (err) {
+                error.CommandNotFound => {
+                    output.print(io, .stderr, "Try '{s} --help' for more information.\n", .{cli.name});
+                    return err;
+                },
+                else => return err,
+            };
         }
 
         /// Writes help for the program, or for `command` when provided.
@@ -61,15 +69,7 @@ pub fn Generate(comptime cli: schema.Cli, comptime ResultType: type) type {
             writer: *std.Io.Writer,
             comptime command: ?schema.Command,
         ) std.Io.Writer.Error!void {
-            try writeHelpText(cli, writer, command);
-        }
-
-        fn printHelp(io: std.Io, comptime command: ?schema.Command) noreturn {
-            var buffer: [4096]u8 = undefined;
-            var file_writer: std.Io.File.Writer = .init(.stdout(), io, &buffer);
-            writeHelpText(cli, &file_writer.interface, command) catch {};
-            file_writer.interface.flush() catch {};
-            std.process.exit(0);
+            return help.write(cli, command, writer);
         }
 
         fn parseSlice(
@@ -105,133 +105,6 @@ pub fn Generate(comptime cli: schema.Cli, comptime ResultType: type) type {
             unreachable;
         }
     };
-}
-
-fn writeHelpText(
-    comptime cli: schema.Cli,
-    writer: *std.Io.Writer,
-    comptime command: ?schema.Command,
-) std.Io.Writer.Error!void {
-    if (command) |cmd| {
-        try writeCommandHelp(cli, writer, cmd);
-    } else {
-        try writeProgramHelp(cli, writer);
-    }
-}
-
-fn writeProgramHelp(comptime cli: schema.Cli, writer: *std.Io.Writer) std.Io.Writer.Error!void {
-    if (cli.version) |version| {
-        try writer.print("{s} {s}\n", .{ cli.name, version });
-    }
-    if (cli.about.len != 0) {
-        try writer.writeAll(cli.about);
-        try writer.writeByte('\n');
-    }
-    if (cli.long_about) |long_about| {
-        try writer.writeByte('\n');
-        try writer.writeAll(long_about);
-        try writer.writeByte('\n');
-    }
-
-    if (cli.about.len != 0 or cli.version != null or cli.long_about != null) {
-        try writer.writeByte('\n');
-    }
-    try writer.print("Usage: {s} <command> [options]\n", .{cli.name});
-
-    try writer.writeAll("\nCommands:\n");
-    inline for (cli.commands) |command| {
-        try writer.print("  {s}  {s}\n", .{ command.name, command.about });
-    }
-
-    try writer.writeAll("\nOptions:\n  --help  Print help\n");
-}
-
-fn writeCommandHelp(
-    comptime cli: schema.Cli,
-    writer: *std.Io.Writer,
-    comptime command: schema.Command,
-) std.Io.Writer.Error!void {
-    if (command.about.len != 0) {
-        try writer.writeAll(command.about);
-        try writer.writeByte('\n');
-    }
-    if (command.long_about) |long_about| {
-        try writer.writeByte('\n');
-        try writer.writeAll(long_about);
-        try writer.writeByte('\n');
-    }
-
-    if (command.about.len != 0 or command.long_about != null) {
-        try writer.writeByte('\n');
-    }
-    try writer.print("Usage: {s} {s}", .{ cli.name, command.name });
-    inline for (command.args) |arg| {
-        switch (arg) {
-            .positional => |positional| {
-                try writer.writeAll(if (positional.required) " <" else " [<");
-                try writer.writeAll(positional.id);
-                try writer.writeAll(if (positional.required) ">" else ">]");
-                if (positional.multiple) try writer.writeAll("...");
-            },
-            .flag, .option => {},
-        }
-    }
-    if (commandHasNamed(command)) try writer.writeAll(" [options]");
-    try writer.writeByte('\n');
-
-    if (commandHasPositionals(command)) {
-        try writer.writeAll("\nArguments:\n");
-        inline for (command.args) |arg| {
-            switch (arg) {
-                .positional => |positional| {
-                    try writer.print("  <{s}>  {s}\n", .{ positional.id, positional.help });
-                },
-                else => {},
-            }
-        }
-    }
-
-    if (commandHasNamed(command)) {
-        try writer.writeAll("\nOptions:\n");
-        inline for (command.args) |arg| {
-            switch (arg) {
-                .flag => |flag| {
-                    try writer.writeAll("  ");
-                    if (flag.short) |short| try writer.print("-{s}, ", .{short});
-                    try writer.print("--{s}  {s}\n", .{ flag.id, flag.help });
-                },
-                .option => |option| {
-                    try writer.writeAll("  ");
-                    if (option.short) |short| try writer.print("-{s}, ", .{short});
-                    try writer.print("--{s} <value>  {s}", .{ option.id, option.help });
-                    if (option.required) try writer.writeAll(" (required)");
-                    if (option.default) |default| try writer.print(" (default: {s})", .{default});
-                    try writer.writeByte('\n');
-                },
-                .positional => {},
-            }
-        }
-    }
-}
-
-fn commandHasNamed(comptime command: schema.Command) bool {
-    for (command.args) |arg| {
-        switch (arg) {
-            .flag, .option => return true,
-            .positional => {},
-        }
-    }
-    return false;
-}
-
-fn commandHasPositionals(comptime command: schema.Command) bool {
-    for (command.args) |arg| {
-        switch (arg) {
-            .positional => return true,
-            .flag, .option => {},
-        }
-    }
-    return false;
 }
 
 fn validateResult(comptime cli: schema.Cli, comptime ResultType: type) void {
