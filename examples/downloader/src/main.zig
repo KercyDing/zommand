@@ -6,9 +6,8 @@ const Download = cli.Download;
 
 pub fn main(init: std.process.Init) !void {
     const allocator = init.arena.allocator();
-    const args = try init.minimal.args.toSlice(allocator);
 
-    const result = try cli.parse(allocator, args);
+    const result = try cli.parse(allocator, init.minimal.args);
 
     switch (result) {
         .download => |download| try runDownload(init.io, init.gpa, download),

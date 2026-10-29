@@ -38,6 +38,7 @@ pub fn emit(allocator: std.mem.Allocator, cli: schema.Cli, writer: *std.Io.Write
         \\
         \\pub const ParseError = error{
         \\    OutOfMemory,
+        \\    ArgumentsUnavailable,
         \\    CommandNotFound,
         \\    ArgumentNotFound,
         \\    MissingRequiredArgument,
@@ -47,7 +48,7 @@ pub fn emit(allocator: std.mem.Allocator, cli: schema.Cli, writer: *std.Io.Write
         \\
         \\pub fn parse(
         \\    allocator: std.mem.Allocator,
-        \\    args: []const [:0]const u8,
+        \\    args: std.process.Args,
         \\) ParseError!Result {
         \\    return Parser.parse(allocator, args);
         \\}

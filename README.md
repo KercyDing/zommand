@@ -60,7 +60,7 @@ The generated module has explicit command types and `parse`:
 ```zig
 const cli = @import("cli");
 
-switch (try cli.parse(allocator, args)) {
+switch (try cli.parse(allocator, init.minimal.args)) {
     .print => |print| std.debug.print("hello, {s}!\n", .{print.name}),
 }
 ```

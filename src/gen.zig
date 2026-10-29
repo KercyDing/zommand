@@ -5,6 +5,7 @@ const ARG_COUNT_MAX = 64;
 
 pub const ParseError = error{
     OutOfMemory,
+    ArgumentsUnavailable,
     CommandNotFound,
     ArgumentNotFound,
     MissingRequiredArgument,
@@ -23,6 +24,17 @@ pub fn Generate(comptime cli: schema.Cli, comptime ResultType: type) type {
         }
 
         pub fn parse(
+            allocator: std.mem.Allocator,
+            args: std.process.Args,
+        ) ParseError!Result {
+            const slice = args.toSlice(allocator) catch |err| switch (err) {
+                error.OutOfMemory => return ParseError.OutOfMemory,
+                else => return ParseError.ArgumentsUnavailable,
+            };
+            return parseSlice(allocator, slice);
+        }
+
+        fn parseSlice(
             allocator: std.mem.Allocator,
             args: []const [:0]const u8,
         ) ParseError!Result {
@@ -423,7 +435,7 @@ test "Generate : success : preserves schema and explicit result" {
         Cli.programName(),
     );
 
-    var value = try Cli.parse(
+    var value = try Cli.parseSlice(
         std.testing.allocator,
         &.{ "zommand", "fetch", "--force", "https://example.com" },
     );
@@ -452,7 +464,7 @@ test "deinit : success : frees repeated option values" {
         }},
     }, Result);
 
-    var value = try Cli.parse(
+    var value = try Cli.parseSlice(
         std.testing.allocator,
         &.{ "zommand", "build", "--include", "src", "--include", "tests" },
     );
@@ -474,12 +486,12 @@ test "parse : success : command without arguments" {
         }},
     }, Result);
 
-    var value = try Cli.parse(std.testing.allocator, &.{ "hello", "world" });
+    var value = try Cli.parseSlice(std.testing.allocator, &.{ "hello", "world" });
     defer Cli.deinit(&value, std.testing.allocator);
     try std.testing.expectEqual(World{}, value.world);
 
     try std.testing.expectError(
         ParseError.ArgumentNotFound,
-        Cli.parse(std.testing.allocator, &.{ "hello", "world", "extra" }),
+        Cli.parseSlice(std.testing.allocator, &.{ "hello", "world", "extra" }),
     );
 }
