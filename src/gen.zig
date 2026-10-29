@@ -1,7 +1,7 @@
 const std = @import("std");
 const schema = @import("schema.zig");
 const output = @import("output.zig");
-const help = @import("help.zig");
+const builtin = @import("builtin.zig");
 
 const ARG_COUNT_MAX = 64;
 
@@ -44,21 +44,28 @@ pub fn Generate(comptime cli: schema.Cli, comptime ResultType: type) type {
             };
 
             var help_requested = false;
+            var version_requested = false;
             for (slice[1..]) |arg| {
                 if (std.mem.eql(u8, arg, "--help") or std.mem.eql(u8, arg, "-h")) {
                     help_requested = true;
                     break;
+                }
+                if (std.mem.eql(u8, arg, "--version") or std.mem.eql(u8, arg, "-V")) {
+                    version_requested = true;
                 }
             }
             if (help_requested) {
                 if (slice.len >= 2) {
                     inline for (cli.commands) |command| {
                         if (std.mem.eql(u8, slice[1], command.name)) {
-                            help.show(io, cli, command);
+                            builtin.showHelp(io, cli, command);
                         }
                     }
                 }
-                help.show(io, cli, null);
+                builtin.showHelp(io, cli, null);
+            }
+            if (version_requested) {
+                builtin.showVersion(io, cli);
             }
 
             return parseSlice(arena, slice) catch |err| switch (err) {
@@ -75,9 +82,12 @@ pub fn Generate(comptime cli: schema.Cli, comptime ResultType: type) type {
             writer: *std.Io.Writer,
             comptime command: ?schema.Command,
         ) std.Io.Writer.Error!void {
-            return help.write(cli, command, writer);
+            return builtin.writeHelp(cli, command, writer);
         }
-
+        /// Writes the configured program version to `writer`.
+        pub fn writeVersion(writer: *std.Io.Writer) std.Io.Writer.Error!void {
+            return builtin.writeVersion(cli, writer);
+        }
         fn parseSlice(
             allocator: std.mem.Allocator,
             args: []const [:0]const u8,
@@ -222,7 +232,26 @@ fn validateCommand(comptime command: schema.Command) void {
                 }
                 multi_positional = positional.multiple;
             },
-            else => {},
+            .flag => |flag| {
+                if (std.mem.eql(u8, flag.id, "help") or std.mem.eql(u8, flag.id, "version")) {
+                    @compileError("argument id 'help' or 'version' is reserved");
+                }
+                if (flag.short) |short| {
+                    if (std.mem.eql(u8, short, "h") or std.mem.eql(u8, short, "V")) {
+                        @compileError("short argument 'h' or 'V' is reserved");
+                    }
+                }
+            },
+            .option => |option| {
+                if (std.mem.eql(u8, option.id, "help") or std.mem.eql(u8, option.id, "version")) {
+                    @compileError("argument id 'help' or 'version' is reserved");
+                }
+                if (option.short) |short| {
+                    if (std.mem.eql(u8, short, "h") or std.mem.eql(u8, short, "V")) {
+                        @compileError("short argument 'h' or 'V' is reserved");
+                    }
+                }
+            },
         }
     }
 }

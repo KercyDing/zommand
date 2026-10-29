@@ -63,6 +63,18 @@ pub fn emit(allocator: std.mem.Allocator, cli: schema.Cli, writer: *std.Io.Write
         \\pub fn deinit(result: *Result, allocator: std.mem.Allocator) void {
         \\    Parser.deinit(result, allocator);
         \\}
+        \\/// Writes program or command help to `writer`.
+        \\pub fn writeHelp(
+        \\    writer: *std.Io.Writer,
+        \\    comptime help_command: ?command.Command,
+        \\) std.Io.Writer.Error!void {
+        \\    return Parser.writeHelp(writer, help_command);
+        \\}
+        \\
+        \\/// Writes the configured program version to `writer`.
+        \\pub fn writeVersion(writer: *std.Io.Writer) std.Io.Writer.Error!void {
+        \\    return Parser.writeVersion(writer);
+        \\}
         \\
         \\/// Returns the program name declared in the CLI schema.
         \\pub fn programName() []const u8 {

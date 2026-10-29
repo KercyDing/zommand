@@ -71,7 +71,8 @@ switch (result) {
 }
 ```
 
-`--help` prints program or command help using the schema's `about`, `long_about`, and `help` fields.
+`-h` is an alias for `--help`; `-V` is an alias for `--version`. The
+`help`/`version` argument ids and `h`/`V` short names are reserved.
 
 See [`src/schema.zig`](src/schema.zig) for all fields.
 
