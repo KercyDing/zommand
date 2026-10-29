@@ -3,7 +3,8 @@ const zommand = @import("zommand");
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
-    const optimize: std.lang.Optimize = .fast;
+    const optimize = b.standardOptimizeOption(.{});
+    const strip = b.option(bool, "strip", "Strip debug symbols") orelse false;
 
     const cli = zommand.createCli(b, .{
         .target = target,
@@ -15,6 +16,7 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
+        .strip = strip,
         .imports = &.{
             .{ .name = "cli", .module = cli },
         },

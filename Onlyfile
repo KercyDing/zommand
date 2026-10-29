@@ -11,10 +11,10 @@ build():
 [fail] Build failed.
 build-examples():
     | cd examples/hello
-    | zig build
+    | zig build -Doptimize=safe -Dstrip=true
 
     | cd examples/downloader
-    | zig build
+    | zig build -Doptimize=safe -Dstrip=true
 
 [help] Run all tests
 [pass] Tests passed.
@@ -41,4 +41,5 @@ clean():
 [pass] Formatting complete.
 [fail] Formatting failed.
 fmt():
-    zig fmt build.zig build.zig.zon src examples/*/build.zig examples/*/build.zig.zon examples/*/cli.zon examples/*/src
+    | zig fmt build.zig build.zig.zon src
+    | zig fmt examples/*/build.zig examples/*/build.zig.zon examples/*/cli.zon examples/*/src
