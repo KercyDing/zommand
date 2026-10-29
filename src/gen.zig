@@ -494,6 +494,7 @@ test "generate and parse explicit result" {
 
     const Cli = Generate(.{
         .name = "zommand",
+        .version = .{ .major = 0, .minor = 0, .patch = 1 },
         .commands = &.{.{
             .name = "fetch",
             .args = &.{
@@ -529,6 +530,7 @@ test "deinit frees repeated values" {
 
     const Cli = Generate(.{
         .name = "zommand",
+        .version = .{ .major = 0, .minor = 0, .patch = 1 },
         .commands = &.{.{
             .name = "build",
             .args = &.{
@@ -554,6 +556,7 @@ test "parse command without arguments" {
 
     const Cli = Generate(.{
         .name = "hello",
+        .version = .{ .major = 0, .minor = 0, .patch = 1 },
         .commands = &.{.{
             .name = "world",
         }},
@@ -574,7 +577,7 @@ test "program help" {
     const Result = union(enum) { fetch: Fetch };
     const Cli = Generate(.{
         .name = "zommand",
-        .version = "0.0.1",
+        .version = .{ .major = 0, .minor = 0, .patch = 1 },
         .about = "Build CLIs.",
         .commands = &.{.{
             .name = "fetch",
@@ -605,6 +608,7 @@ test "command help" {
     };
     const Cli = Generate(.{
         .name = "downloader",
+        .version = .{ .major = 0, .minor = 0, .patch = 1 },
         .commands = &.{command},
     }, Result);
 

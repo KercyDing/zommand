@@ -15,7 +15,7 @@ Declare the schema in ZON:
 ```zig
 .{
     .name = "hello",
-    .about = "Print hello world.",
+    .version = "0.0.1",
     .commands = .{
         .{
             .name = "print",

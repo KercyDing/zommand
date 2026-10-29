@@ -30,25 +30,17 @@ pub fn writeVersion(
     comptime cli: schema.Cli,
     writer: *std.Io.Writer,
 ) std.Io.Writer.Error!void {
-    if (cli.version) |version| {
-        try writer.print("{s}\n", .{version});
-    }
+    try writer.print("{f}\n", .{cli.version});
 }
 
 /// Prints the configured program version to stdout and exits successfully.
 pub fn showVersion(io: std.Io, comptime cli: schema.Cli) noreturn {
-    if (cli.version == null) {
-        output.print(io, .stderr, "error: version is not configured\n", .{});
-    } else {
-        output.write(io, .stdout, writeVersion, .{cli});
-    }
+    output.write(io, .stdout, writeVersion, .{cli});
     std.process.exit(0);
 }
 
 fn writeProgram(comptime cli: schema.Cli, writer: *std.Io.Writer) std.Io.Writer.Error!void {
-    if (cli.version) |version| {
-        try writer.print("{s} {s}\n", .{ cli.name, version });
-    }
+    try writer.print("{s} {f}\n", .{ cli.name, cli.version });
     if (cli.about.len != 0) {
         try writer.writeAll(cli.about);
         try writer.writeByte('\n');
@@ -59,7 +51,7 @@ fn writeProgram(comptime cli: schema.Cli, writer: *std.Io.Writer) std.Io.Writer.
         try writer.writeByte('\n');
     }
 
-    if (cli.about.len != 0 or cli.version != null or cli.long_about != null) {
+    if (cli.about.len != 0 or cli.long_about != null) {
         try writer.writeByte('\n');
     }
     try writer.print("Usage: {s} <command> [options]\n", .{cli.name});
@@ -68,9 +60,9 @@ fn writeProgram(comptime cli: schema.Cli, writer: *std.Io.Writer) std.Io.Writer.
     inline for (cli.commands) |command| {
         try writer.print("  {s}  {s}\n", .{ command.name, command.about });
     }
-
-    try writer.writeAll("\nOptions:\n  -h, --help  Print help\n");
-    if (cli.version != null) try writer.writeAll("  -V, --version  Print version\n");
+    try writer.writeAll("\nOptions:\n");
+    try writer.print("  {s:<14} {s}\n", .{ "-h, --help", "Print help" });
+    try writer.print("  {s:<14} {s}\n", .{ "-V, --version", "Print version" });
 }
 
 fn writeCommand(

@@ -23,7 +23,7 @@ pub fn main(init: std.process.Init) !void {
     const source = try allocator.dupeSentinel(u8, source_bytes, 0);
 
     var diagnostics: std.zon.parse.Diagnostics = undefined;
-    const cli = std.zon.parse.fromSlice(schema.Cli, .{
+    const cli = std.zon.parse.fromSlice(schema.InputCli, .{
         .gpa = std.heap.page_allocator,
         .arena = allocator,
         .source = source,

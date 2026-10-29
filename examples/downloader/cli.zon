@@ -1,6 +1,6 @@
 .{
     .name = "downloader",
-    .about = "Download a file.",
+    .version = "0.0.1",
     .commands = .{
         .{
             .name = "download",
