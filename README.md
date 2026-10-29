@@ -100,8 +100,15 @@ dependency:
   prints its hash or a dependency declaration.
 - [`examples/scaffold`](examples/scaffold) creates a Zig project from a
   template, the former `zis init` command.
+- [`examples/hello`](examples/hello) is the smallest usage, with one command
+  and an option.
 
 ```bash
+cd examples/hello
+zig build
+./zig-out/bin/hello print
+./zig-out/bin/hello print --name xxx
+
 cd examples/pack-fetch
 zig build
 ./zig-out/bin/pack-fetch fetch --save https://github.com/zigtools/zls/archive/refs/tags/0.16.0.tar.gz
