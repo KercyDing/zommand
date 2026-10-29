@@ -1,72 +1,42 @@
 # Zommand
 
-A Zig library to build CLIs from an easy `.zon` schema.
+A Zig library to build CLIs from a `.zon` schema.
 
-## How Does It Work
+## Usage
 
-`command-codegen` parses a `.zon` schema at build time and generates a Zig
-module containing explicit command types and the parser:
+Declare the schema in ZON:
 
 ```zig
-// Generated from cli.zon.
-pub const Fetch = struct {
-    url: []const u8,
-    save: bool,
-};
-
-pub const Result = union(enum) {
-    fetch: Fetch,
-};
-
-const Parser = command.Generate(schema, Result);
-
-pub fn parse(
-    allocator: std.mem.Allocator,
-    args: []const [:0]const u8,
-) ParseError!Result {
-    return Parser.parse(allocator, args);
+.{
+    .name = "hello",
+    .about = "Print hello world.",
+    .commands = .{
+        .{
+            .name = "print",
+            .about = "Print hello world",
+            .args = .{
+                .{
+                    .option = .{
+                        .id = "name",
+                        .help = "Name to greet (default: world)",
+                        .default = "world",
+                    },
+                },
+            },
+        },
+    },
 }
 ```
 
-The generated file stays in the build cache; nothing is written into the source
-tree. Types are explicit Zig declarations rather than comptime-constructed
-`@Struct`/`@Union`, so editors can resolve them as long as their Zig build
-integration works.
-
-The schema uses Zig tagged unions written directly in ZON:
+Generate a module from it in `build.zig`:
 
 ```zig
-.args = .{
-    .{ .positional = .{ .id = "url", .required = true } },
-    .{ .flag = .{ .id = "save", .short = "s" } },
-    .{ .option = .{ .id = "template", .default = "global" } },
-},
-```
+const zommand = @import("zommand");
 
-`Generate` validates at comptime that the generated `Result` type matches the
-schema exactly, including field names and field types. The schema supports
-positionals, boolean flags, and options, with short names, defaults, required
-values, repeated values, and inheritance by subcommands. See
-[`src/schema.zig`](src/schema.zig) for the full schema and the
-[examples](examples) for complete usages.
-
-## Consuming the library
-
-Generate the schema module in `build.zig`, then import it from the executable:
-
-```zig
-const zommand = b.dependency("zommand", .{
+const cli = zommand.createCli(b, .{
     .target = target,
     .optimize = optimize,
-});
-
-const generate = b.addRunArtifact(zommand.artifact("command-codegen"));
-generate.addFileArg(b.path("src/cli.zon"));
-const cli = b.createModule(.{
-    .root_source_file = generate.addOutputFileArg("cli.zig"),
-    .imports = &.{
-        .{ .name = "command", .module = zommand.module("command") },
-    },
+    .schema = b.path("cli.zon"),
 });
 
 const exe_mod = b.createModule(.{
@@ -79,51 +49,41 @@ const exe_mod = b.createModule(.{
 });
 ```
 
+The generated module has explicit command types and `parse`:
+
 ```zig
-// src/main.zig
 const cli = @import("cli");
-const Fetch = cli.Fetch;
 
-const result = try cli.parse(allocator, args);
-
-switch (result) {
-    .fetch => |f| try runFetch(io, allocator, environ, f),
+switch (try cli.parse(allocator, args)) {
+    .print => |print| std.debug.print("hello, {s}!\n", .{print.name}),
 }
 ```
 
+See [`src/schema.zig`](src/schema.zig) for all fields.
+
 ## Examples
 
-Each example is a complete project that depends on zommand through a path
-dependency:
+Complete projects live in [`examples`](examples):
 
-- [`examples/pack-fetch`](examples/pack-fetch) fetches a package archive and
-  prints its hash or a dependency declaration.
-- [`examples/scaffold`](examples/scaffold) creates a Zig project from a
-  template, the former `zis init` command.
-- [`examples/hello`](examples/hello) is the smallest usage, with one command
-  and an option.
+- [`hello`](examples/hello): one command, one option
+- [`downloader`](examples/downloader): stream a URL into a directory
+- [`scaffold`](examples/scaffold): create a project from a template
 
 ```bash
-cd examples/hello
-zig build
-./zig-out/bin/hello print
-./zig-out/bin/hello print --name xxx
+only build-examples
 
-cd examples/pack-fetch
-zig build
-./zig-out/bin/pack-fetch fetch --save https://github.com/zigtools/zls/archive/refs/tags/0.16.0.tar.gz
-
-cd examples/scaffold
-zig build
-./zig-out/bin/scaffold init my-project
+./examples/hello/zig-out/bin/hello print --name xxx
+./examples/downloader/zig-out/bin/downloader download https://ziglang.org/download/index.json --path ./.zig-cache/tmp
+./examples/scaffold/zig-out/bin/scaffold init my-project
 ```
 
 ## Development
 
 ```bash
-zig build test                                  # library tests
-(cd examples/pack-fetch && zig build test)      # pack-fetch tests
-(cd examples/scaffold && zig build test)        # scaffold tests
+only build       # build zommand
+only test        # run tests
+only fmt         # format
+only clean       # remove build artifacts
 ```
 
 ## LICENSE
