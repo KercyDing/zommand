@@ -1,0 +1,30 @@
+.{
+    .name = "scaffold",
+    .version = "0.0.1",
+    .about = "Create a Zig project from a template.",
+    .commands = [
+        .{
+            .name = "init",
+            .about = "Initialize a project from a template",
+            .args = [
+                // Usage:
+                // scaffold init <name>
+                .positional(.{
+                    .id = "name",
+                    .help = "Project name",
+                    .required = true,
+                }),
+                // Usage:
+                // scaffold init <name> --template <TEMPLATE>
+                // or:
+                // scaffold init <name> -t <TEMPLATE>
+                .option(.{
+                    .id = "template",
+                    .short = "t",
+                    .help = "Template name to use or create (default: global)",
+                    .default = "global",
+                }),
+            ],
+        },
+    ],
+}

@@ -1,23 +1,20 @@
 .{
-    .name = .zis,
+    .name = .zommand,
     .version = "0.0.1",
-    .minimum_zig_version = "0.16.0",
+    .minimum_zig_version = "0.17.0",
     .dependencies = .{
-        .libcommand = .{
-            .path = "libcommand",
-        },
-        .curl = .{
-            .url = "git+https://github.com/jiacai2050/zig-curl?ref=main#9c0f1d211ad22dd0f4c20aa54060c1d9f163595a",
-            .hash = "curl-0.6.0-dev-P4tT4W7_AAAEPibcTLuVEkwsmt61vws3n0pBs0DpAmv9",
+        .ziggy = .{
+            .url = "git+https://github.com/kristoff-it/ziggy?ref=main#c4fc096122142cef45468c117ef50a26c2ba18c3",
+            .hash = "ziggy-0.2.0-kTg8vwzzBwAjA_nM867ZSuFmpEKqZK389SFfzgcDw9VH",
         },
     },
     .paths = .{
         "build.zig",
         "build.zig.zon",
         "src",
-        "libcommand",
+        "examples",
         "LICENSE",
         "README.md",
     },
-    .fingerprint = 0xdb14c4fcb5983dd1,
+    .fingerprint = 0x7c8c33c9edc51f3e,
 }

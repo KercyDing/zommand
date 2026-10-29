@@ -1,8 +1,19 @@
 const std = @import("std");
 const builtin = @import("builtin");
 
-const Cli = @import("zis_schema").Cli;
+const Cli = @import("cli_schema").Cli;
 const Init = @FieldType(Cli.Result, "init");
+
+pub fn main(init: std.process.Init) !void {
+    const allocator = init.arena.allocator();
+    const args = try init.minimal.args.toSlice(allocator);
+
+    const result = try Cli.parse(allocator, args);
+
+    switch (result) {
+        .init => |i| try runInit(init.io, allocator, init.environ_map, i),
+    }
+}
 
 const bootstrap_name = "template";
 const name_placeholder = "{{name}}";
@@ -106,7 +117,7 @@ fn findFingerprintValue(source: []const u8) ?[]const u8 {
     return source[start..end];
 }
 
-/// Resolves the zis data directory.
+/// Resolves the scaffold data directory.
 fn dataDirPath(
     allocator: std.mem.Allocator,
     environ: *const std.process.Environ.Map,
@@ -117,18 +128,18 @@ fn dataDirPath(
         if (!std.fs.path.isAbsolute(local_app_data)) {
             return error.InvalidLocalAppData;
         }
-        return std.fs.path.join(allocator, &.{ local_app_data, "Programs", "Zis" });
+        return std.fs.path.join(allocator, &.{ local_app_data, "Programs", "Scaffold" });
     }
 
     if (environ.get("XDG_DATA_HOME")) |xdg| {
         if (xdg.len != 0 and std.fs.path.isAbsolute(xdg)) {
-            return std.fs.path.join(allocator, &.{ xdg, "zis" });
+            return std.fs.path.join(allocator, &.{ xdg, "scaffold" });
         }
     }
 
     const home = environ.get("HOME") orelse return error.HomeNotSet;
     if (!std.fs.path.isAbsolute(home)) return error.InvalidHome;
-    return std.fs.path.join(allocator, &.{ home, ".local", "share", "zis" });
+    return std.fs.path.join(allocator, &.{ home, ".local", "share", "scaffold" });
 }
 
 /// Creates or opens `sub_path`, rejecting it if it already contains anything.
@@ -244,7 +255,10 @@ fn copyDir(
                 defer sub_dst.close(io);
 
                 try copyDir(io, allocator, sub_src, sub_dst, repls);
-                try sub_dst.setPermissions(io, source_stat.permissions);
+                // Zig 0.17 has no Windows implementation of directory permissions.
+                if (builtin.os.tag != .windows) {
+                    try sub_dst.setPermissions(io, source_stat.permissions);
+                }
             },
             .file => {
                 const source_stat = try src.statFile(io, entry.name, .{
@@ -268,12 +282,15 @@ fn copyDir(
                         .exclusive = true,
                     },
                 });
-                try dst.setFilePermissions(
-                    io,
-                    entry.name,
-                    source_stat.permissions,
-                    .{},
-                );
+                // Zig 0.17 has no Windows implementation of directory permissions.
+                if (builtin.os.tag != .windows) {
+                    try dst.setFilePermissions(
+                        io,
+                        entry.name,
+                        source_stat.permissions,
+                        .{},
+                    );
+                }
             },
             .sym_link => {
                 var link_buffer: [std.fs.max_path_bytes]u8 = undefined;
@@ -433,7 +450,7 @@ test "xdg fallback" {
     defer allocator.free(actual);
     const expected = try std.fs.path.join(
         allocator,
-        &.{ "/home/example", ".local", "share", "zis" },
+        &.{ "/home/example", ".local", "share", "scaffold" },
     );
     defer allocator.free(expected);
 
@@ -478,22 +495,19 @@ test "copy metadata" {
         .data = "#!/bin/sh\necho {{name}}\n",
         .flags = .{ .permissions = .executable_file },
     });
-    try source.createDir(io, "readonly", .default_dir);
-    var readonly = try source.openDir(io, "readonly", .{ .iterate = true });
-    try readonly.writeFile(io, .{
-        .sub_path = "nested.txt",
-        .data = "nested",
-    });
-    const original_dir_permissions = (try readonly.stat(io)).permissions;
-    const readonly_permissions = original_dir_permissions.setReadOnly(true);
-    try readonly.setPermissions(io, readonly_permissions);
-    readonly.close(io);
-    defer source.setFilePermissions(
-        io,
-        "readonly",
-        original_dir_permissions,
-        .{},
-    ) catch {};
+    // `File.Permissions.setReadOnly` does not compile on Windows in Zig 0.17.
+    if (builtin.os.tag != .windows) {
+        try source.createDir(io, "readonly", .default_dir);
+        var readonly = try source.openDir(io, "readonly", .{ .iterate = true });
+        try readonly.writeFile(io, .{
+            .sub_path = "nested.txt",
+            .data = "nested",
+        });
+        const original_dir_permissions = (try readonly.stat(io)).permissions;
+        const readonly_permissions = original_dir_permissions.setReadOnly(true);
+        try readonly.setPermissions(io, readonly_permissions);
+        readonly.close(io);
+    }
 
     source.symLink(io, "run.sh", "run-link.sh", .{}) catch |err| switch (err) {
         error.AccessDenied, error.PermissionDenied => return error.SkipZigTest,
@@ -508,12 +522,6 @@ test "copy metadata" {
         .{ .needle = name_placeholder, .replacement = "example" },
     };
     try copyDir(io, allocator, source, target, &repls);
-    defer target.setFilePermissions(
-        io,
-        "readonly",
-        .default_dir,
-        .{},
-    ) catch {};
 
     const rendered = try target.readFileAlloc(
         io,
@@ -524,17 +532,21 @@ test "copy metadata" {
     defer allocator.free(rendered);
     try std.testing.expectEqualStrings("#!/bin/sh\necho example\n", rendered);
 
-    const source_stat = try source.statFile(io, "run.sh", .{});
-    const target_stat = try target.statFile(io, "run.sh", .{});
-    try std.testing.expectEqual(source_stat.permissions, target_stat.permissions);
+    if (builtin.os.tag != .windows) {
+        const source_stat = try source.statFile(io, "run.sh", .{});
+        const target_stat = try target.statFile(io, "run.sh", .{});
+        try std.testing.expectEqual(source_stat.permissions, target_stat.permissions);
+    }
 
-    const source_dir_stat = try source.statFile(io, "readonly", .{});
-    const target_dir_stat = try target.statFile(io, "readonly", .{});
-    try std.testing.expectEqual(
-        source_dir_stat.permissions,
-        target_dir_stat.permissions,
-    );
-    try target.access(io, "readonly/nested.txt", .{});
+    if (builtin.os.tag != .windows) {
+        const source_dir_stat = try source.statFile(io, "readonly", .{});
+        const target_dir_stat = try target.statFile(io, "readonly", .{});
+        try std.testing.expectEqual(
+            source_dir_stat.permissions,
+            target_dir_stat.permissions,
+        );
+        try target.access(io, "readonly/nested.txt", .{});
+    }
 
     var link_buffer: [std.fs.max_path_bytes]u8 = undefined;
     const link_target = link_buffer[0..try target.readLink(

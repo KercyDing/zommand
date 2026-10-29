@@ -1,5 +1,5 @@
 pub const Cli = struct {
-    /// Program name, for example: "zis".
+    /// Program name, for example: "zommand".
     name: []const u8,
 
     /// Program version, for example: "0.0.1".
@@ -13,7 +13,7 @@ pub const Cli = struct {
 
     /// Top-level arguments, for example:
     ///
-    /// zis --verbose
+    /// zommand --verbose
     args: []const Arg = &.{},
 
     /// Available subcommands.
@@ -40,7 +40,7 @@ pub const Command = struct {
 pub const Arg = union(enum) {
     /// Positional argument:
     ///
-    /// zis fetch <url>
+    /// zommand fetch <url>
     positional: Positional,
 
     /// Boolean flag:
@@ -72,7 +72,7 @@ pub const Positional = struct {
     ///
     /// Example:
     ///
-    /// zis add <file1> <file2>...
+    /// zommand add <file1> <file2>...
     multiple: bool = false,
 };
 

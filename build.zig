@@ -4,83 +4,49 @@ const builtin = @import("builtin");
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
-    const strip = b.option(bool, "strip", "Strip debug symbols") orelse false;
-    const static = b.option(bool, "static", "Link libcurl statically") orelse true;
 
-    const command_dep = b.dependency("libcommand", .{
+    const ziggy_dep = b.dependency("ziggy", .{
         .target = target,
         .optimize = optimize,
     });
-    const command_codegen = command_dep.artifact("command-codegen");
-    const generate_schema = b.addRunArtifact(command_codegen);
-    generate_schema.addFileArg(b.path("zis.ziggy"));
-    const generated_schema = generate_schema.addOutputFileArg("zis_schema.zig");
 
-    const curl_dep = b.dependency("curl", .{
+    const command_mod = b.addModule("command", .{
+        .root_source_file = b.path("src/root.zig"),
         .target = target,
         .optimize = optimize,
-        // The default setting is static.
-        .link_vendor = static,
     });
-
-    const exe_mod = b.createModule(.{
-        .root_source_file = b.path("src/main.zig"),
-        .target = target,
-        .optimize = optimize,
-        .strip = strip,
-        .imports = &.{
-            .{ .name = "command", .module = command_dep.module("command") },
-            .{ .name = "curl", .module = curl_dep.module("curl") },
-        },
-    });
-
-    if (!static) {
-        exe_mod.linkSystemLibrary("curl", .{});
-    }
 
     const schema_mod = b.createModule(.{
-        .root_source_file = generated_schema,
+        .root_source_file = b.path("src/schema.zig"),
+        .target = b.graph.host,
+        .optimize = .Debug,
+    });
+
+    const codegen_mod = b.createModule(.{
+        .root_source_file = b.path("src/codegen/main.zig"),
+        .target = b.graph.host,
+        .optimize = .Debug,
         .imports = &.{
-            .{ .name = "command", .module = command_dep.module("command") },
+            .{ .name = "ziggy", .module = ziggy_dep.module("ziggy") },
+            .{ .name = "schema", .module = schema_mod },
         },
     });
-    exe_mod.addImport("zis_schema", schema_mod);
-
-    const exe = b.addExecutable(.{
-        .name = "zis",
-        .root_module = exe_mod,
+    const codegen = b.addExecutable(.{
+        .name = "command-codegen",
+        .root_module = codegen_mod,
     });
-    b.installArtifact(exe);
+    b.installArtifact(codegen);
 
-    const run_step = b.step("run", "Run zis");
-
-    const run_cmd = b.addRunArtifact(exe);
-    run_step.dependOn(&run_cmd.step);
-    run_cmd.step.dependOn(b.getInstallStep());
-
-    run_cmd.addPassthruArgs();
-
-    run_step.dependOn(&run_cmd.step);
-
-    const init_test_mod = b.createModule(.{
-        .root_source_file = b.path("src/init.zig"),
-        .target = target,
-        .optimize = optimize,
-        .imports = &.{
-            .{ .name = "zis_schema", .module = schema_mod },
-        },
+    const lib_tests = b.addTest(.{
+        .root_module = command_mod,
     });
-    const init_tests = b.addTest(.{
-        .root_module = init_test_mod,
-    });
-    const run_init_tests = b.addRunArtifact(init_tests);
 
-    const test_step = b.step("test", "Run tests");
-    test_step.dependOn(&run_init_tests.step);
+    const test_step = b.step("test", "Run zommand tests");
+    test_step.dependOn(&b.addRunArtifact(lib_tests).step);
 }
 
 comptime {
-    const minimum_zig_version = "0.16.0";
+    const minimum_zig_version = "0.17.0";
     const minimum = std.SemanticVersion.parse(minimum_zig_version) catch unreachable;
 
     if (builtin.zig_version.order(minimum) == .lt) {

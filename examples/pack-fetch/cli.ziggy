@@ -1,0 +1,29 @@
+.{
+    .name = "pack-fetch",
+    .version = "0.0.1",
+    .about = "Fetch a Zig package and print its hash.",
+    .commands = [
+        .{
+            .name = "fetch",
+            .about = "Fetch a package and print hash",
+            .args = [
+                // Usage:
+                // pack-fetch fetch <url>
+                .positional(.{
+                    .id = "url",
+                    .help = "Package repository URL",
+                    .required = true,
+                }),
+                // Usage:
+                // pack-fetch fetch --save <url>
+                // or:
+                // pack-fetch fetch -s <url>
+                .flag(.{
+                    .id = "save",
+                    .short = "s",
+                    .help = "Print full dependency",
+                }),
+            ],
+        },
+    ],
+}

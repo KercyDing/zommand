@@ -2,8 +2,19 @@ const std = @import("std");
 const builtin = @import("builtin");
 const curl = @import("curl");
 
-const Cli = @import("zis_schema").Cli;
+const Cli = @import("cli_schema").Cli;
 const Fetch = @FieldType(Cli.Result, "fetch");
+
+pub fn main(init: std.process.Init) !void {
+    const allocator = init.arena.allocator();
+    const args = try init.minimal.args.toSlice(allocator);
+
+    const result = try Cli.parse(allocator, args);
+
+    switch (result) {
+        .fetch => |f| try runFetch(init.io, allocator, init.environ_map, f),
+    }
+}
 
 const ArchiveFormat = enum {
     tar,
@@ -106,7 +117,7 @@ pub fn runFetch(
     var temp_root = try openSystemTempDir(io, environ);
     defer temp_root.close(io);
 
-    var download_path = try std.Io.Dir.createDirPathOpen(temp_root, io, "zis", .{});
+    var download_path = try std.Io.Dir.createDirPathOpen(temp_root, io, "pack-fetch", .{});
     defer download_path.close(io);
 
     var task = try TempTaskDir.create(io, download_path);

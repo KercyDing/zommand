@@ -62,7 +62,7 @@ fn makeResultType(comptime cli: schema.Cli) type {
     var field_names: [field_count][]const u8 = undefined;
     var field_types: [field_count]type = undefined;
     var field_values: [field_count]u32 = undefined;
-    var field_attrs: [field_count]std.builtin.Type.Union.FieldAttributes = @splat(.{});
+    var field_attrs: [field_count]std.lang.Type.Union.FieldAttributes = @splat(.{});
 
     for (cli.commands, 0..) |cmd, i| {
         field_names[i] = cmd.name;
@@ -93,7 +93,7 @@ fn makeCommandType(comptime command: schema.Command) type {
 
     var field_names: [field_count][]const u8 = undefined;
     var field_types: [field_count]type = undefined;
-    var field_attrs: [field_count]std.builtin.Type.Struct.FieldAttributes = @splat(.{});
+    var field_attrs: [field_count]std.lang.Type.Struct.FieldAttributes = @splat(.{});
 
     for (command.args, 0..) |arg, i| {
         field_names[i] = switch (arg) {
@@ -410,7 +410,7 @@ test "makeCommandType : success : positional and flag" {
 
 test "Generate : success : preserve schema and generate result type" {
     const Cli = Generate(&.{
-        .name = "zis",
+        .name = "zommand",
         .commands = &.{.{
             .name = "fetch",
             .args = &.{
@@ -421,7 +421,7 @@ test "Generate : success : preserve schema and generate result type" {
     });
 
     try std.testing.expectEqualStrings(
-        "zis",
+        "zommand",
         Cli.programName(),
     );
 

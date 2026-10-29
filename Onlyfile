@@ -1,90 +1,47 @@
-!version 0.4
-!shell bash
+!version 0.5
 
-[help] Build and run in debug mode
-[desc] Pass arguments to zis,
-[desc] such as `only br fetch --save <url>`.
+[help] Build and run the pack-fetch example
+[desc] Pass arguments to the example,
+[desc] such as `only run-pack-fetch fetch --save <url>`.
 [pass] Debug run complete.
-br(args..):
-    zig build run -- {{ args }}
+run-pack-fetch(args..):
+    | cd examples/pack-fetch
+    | zig build run -- {{args}}
 
-# Build the release binary
-_prebuild():
-    zig build -Doptimize=ReleaseFast -Dstrip=true -Dstatic=true
+[help] Build and run the scaffold example
+[desc] Pass arguments to the example,
+[desc] such as `only run-scaffold init my-project`.
+[pass] Debug run complete.
+run-scaffold(args..):
+    | cd examples/scaffold
+    | zig build run -- {{args}}
 
-[help] Run the release binary
-[pass] Release run complete.
-rr(args..) & _prebuild:
-    ./zig-out/bin/zis {{ args }}
+[help] Run all tests
+[pass] Tests passed.
+[fail] Tests failed.
+test():
+    zig build test
 
-[help] Clean zis build artifacts
+    | cd examples/pack-fetch
+    | zig build test
+
+    | cd examples/scaffold
+    | zig build test
+
+[help] Clean zommand build artifacts
 [pass] Clean complete.
 [fail] Clean failed.
-c():
-    rm -rf .zig-cache zig-out
+clean():
+    rm -rf .zig-cache zig-out zig-pkg
+
+    | cd examples/pack-fetch
+    | rm -rf .zig-cache zig-out zig-pkg
+
+    | cd examples/scaffold
+    | rm -rf .zig-cache zig-out zig-pkg
 
 [help] Format the codebase
 [pass] Formatting complete.
 [fail] Formatting failed.
-f():
-    zig fmt src/ libcommand/
-
-[help] Clean all build artifacts
-[pass] Clean complete.
-[fail] Clean failed.
-ca() & c & lib.c
-
-[help] Install the local zis binary
-[desc] Install the Windows binary after exit.
-[pass] Installed. Restart your shell.
-[fail] Installation failed.
-i()
-    ? @os("windows")
-    & _prebuild
-    shell~=pwsh
-:
-    | $installDir = Join-Path $env:LOCALAPPDATA "Programs\Zis"
-    | $installPath = Join-Path $installDir "zis.exe"
-    | $stagedPath = Join-Path $env:TEMP "zis-install-staged.exe"
-    | $parentPid = (Get-CimInstance Win32_Process -Filter "ProcessId=$PID").ParentProcessId
-    | $shellPath = (Get-Process -Id $PID).Path
-    |
-    | New-Item -ItemType Directory -Force -Path $installDir | Out-Null
-    | $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
-    | if (($userPath -split ";") -notcontains $installDir) {
-    |     $newPath = if ([string]::IsNullOrWhiteSpace($userPath)) { $installDir } else { $userPath.TrimEnd(";") + ";" + $installDir }
-    |     [Environment]::SetEnvironmentVariable("Path", $newPath, "User")
-    | }
-    | Copy-Item ./zig-out/bin/zis.exe -Destination $stagedPath -Force
-    |
-    | $script = "Wait-Process -Id $parentPid; Copy-Item -LiteralPath '$stagedPath' -Destination '$installPath' -Force; Remove-Item -LiteralPath '$stagedPath' -Force"
-    | $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($script))
-    | Start-Process -WindowStyle Hidden -FilePath $shellPath -ArgumentList "-NoProfile", "-EncodedCommand", $encoded
-
-[desc] Install to ~/.local/bin/zis.
-[pass] Installed to ~/.local/bin/zis.
-i() & _prebuild:
-    | install_dir="$HOME/.local/bin"
-    | staged_path="$install_dir/.zis-install"
-    |
-    | mkdir -p "$install_dir"
-    | cp ./zig-out/bin/zis "$staged_path"
-    | chmod +x "$staged_path"
-    | mv "$staged_path" "$install_dir/zis"
-
-[help] Library command tasks
-group lib {
-
-    [help] Run library tests
-    [pass] Library tests passed.
-    [fail] Library tests failed.
-    t():
-        | cd libcommand
-        | zig build test
-
-    [help] Clean library build artifacts
-    [pass] Library clean complete.
-    [fail] Library clean failed.
-    c():
-        rm -rf libcommand/.zig-cache libcommand/zig-out
-}
+fmt():
+    zig fmt .
