@@ -1,20 +1,23 @@
 !version 0.5
 
-[help] Build and run the pack-fetch example
-[desc] Pass arguments to the example,
-[desc] such as `only run-pack-fetch fetch --save <url>`.
-[pass] Debug run complete.
-run-pack-fetch(args..):
-    | cd examples/pack-fetch
-    | zig build run -- {{args}}
+[help] Build zommand
+[pass] Build complete.
+[fail] Build failed.
+build():
+    zig build
 
-[help] Build and run the scaffold example
-[desc] Pass arguments to the example,
-[desc] such as `only run-scaffold init my-project`.
-[pass] Debug run complete.
-run-scaffold(args..):
+[help] Build all examples
+[pass] Build complete.
+[fail] Build failed.
+build-examples():
+    | cd examples/hello
+    | zig build
+
+    | cd examples/pack-fetch
+    | zig build
+
     | cd examples/scaffold
-    | zig build run -- {{args}}
+    | zig build
 
 [help] Run all tests
 [pass] Tests passed.
@@ -32,13 +35,16 @@ test():
 [pass] Clean complete.
 [fail] Clean failed.
 clean():
-    rm -rf .zig-cache zig-out zig-pkg
+    rm -rf .zig-cache zig-out
 
     | cd examples/pack-fetch
     | rm -rf .zig-cache zig-out zig-pkg
 
     | cd examples/scaffold
-    | rm -rf .zig-cache zig-out zig-pkg
+    | rm -rf .zig-cache zig-out
+
+    | cd examples/hello
+    | rm -rf .zig-cache zig-out
 
 [help] Format the codebase
 [pass] Formatting complete.
