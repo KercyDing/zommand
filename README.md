@@ -67,14 +67,12 @@ Complete projects live in [`examples`](examples):
 
 - [`hello`](examples/hello): one command, one option
 - [`downloader`](examples/downloader): stream a URL into a directory
-- [`scaffold`](examples/scaffold): create a project from a template
 
 ```bash
 only build-examples
 
 ./examples/hello/zig-out/bin/hello print --name xxx
 ./examples/downloader/zig-out/bin/downloader download https://ziglang.org/download/index.json --path ./.zig-cache/tmp
-./examples/scaffold/zig-out/bin/scaffold init my-project
 ```
 
 ## Development

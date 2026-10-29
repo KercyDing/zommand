@@ -16,9 +16,6 @@ build-examples():
     | cd examples/downloader
     | zig build
 
-    | cd examples/scaffold
-    | zig build
-
 [help] Run all tests
 [pass] Tests passed.
 [fail] Tests failed.
@@ -26,9 +23,6 @@ test():
     zig build test
 
     | cd examples/downloader
-    | zig build test
-
-    | cd examples/scaffold
     | zig build test
 
 [help] Clean zommand build artifacts
@@ -39,9 +33,6 @@ clean():
 
     | cd examples/downloader
     | rm -rf .zig-cache zig-out zig-pkg
-
-    | cd examples/scaffold
-    | rm -rf .zig-cache zig-out
 
     | cd examples/hello
     | rm -rf .zig-cache zig-out
