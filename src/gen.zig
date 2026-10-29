@@ -26,6 +26,7 @@ pub fn Generate(comptime cli: schema.Cli, comptime ResultType: type) type {
         /// Parses process arguments. `arena` must be arena-style: the returned
         /// result borrows the converted argument strings.
         pub fn parse(
+            io: std.Io,
             arena: std.mem.Allocator,
             args: std.process.Args,
         ) ParseError!Result {
@@ -33,7 +34,42 @@ pub fn Generate(comptime cli: schema.Cli, comptime ResultType: type) type {
                 error.OutOfMemory => return ParseError.OutOfMemory,
                 else => return ParseError.ArgumentsUnavailable,
             };
+
+            var help_requested = false;
+            for (slice[1..]) |arg| {
+                if (std.mem.eql(u8, arg, "--help")) {
+                    help_requested = true;
+                    break;
+                }
+            }
+            if (help_requested) {
+                if (slice.len >= 2) {
+                    inline for (cli.commands) |command| {
+                        if (std.mem.eql(u8, slice[1], command.name)) {
+                            printHelp(io, command);
+                        }
+                    }
+                }
+                printHelp(io, null);
+            }
+
             return parseSlice(arena, slice);
+        }
+
+        /// Writes help for the program, or for `command` when provided.
+        pub fn writeHelp(
+            writer: *std.Io.Writer,
+            comptime command: ?schema.Command,
+        ) std.Io.Writer.Error!void {
+            try writeHelpText(cli, writer, command);
+        }
+
+        fn printHelp(io: std.Io, comptime command: ?schema.Command) noreturn {
+            var buffer: [4096]u8 = undefined;
+            var file_writer: std.Io.File.Writer = .init(.stdout(), io, &buffer);
+            writeHelpText(cli, &file_writer.interface, command) catch {};
+            file_writer.interface.flush() catch {};
+            std.process.exit(0);
         }
 
         fn parseSlice(
@@ -69,6 +105,133 @@ pub fn Generate(comptime cli: schema.Cli, comptime ResultType: type) type {
             unreachable;
         }
     };
+}
+
+fn writeHelpText(
+    comptime cli: schema.Cli,
+    writer: *std.Io.Writer,
+    comptime command: ?schema.Command,
+) std.Io.Writer.Error!void {
+    if (command) |cmd| {
+        try writeCommandHelp(cli, writer, cmd);
+    } else {
+        try writeProgramHelp(cli, writer);
+    }
+}
+
+fn writeProgramHelp(comptime cli: schema.Cli, writer: *std.Io.Writer) std.Io.Writer.Error!void {
+    if (cli.version) |version| {
+        try writer.print("{s} {s}\n", .{ cli.name, version });
+    }
+    if (cli.about.len != 0) {
+        try writer.writeAll(cli.about);
+        try writer.writeByte('\n');
+    }
+    if (cli.long_about) |long_about| {
+        try writer.writeByte('\n');
+        try writer.writeAll(long_about);
+        try writer.writeByte('\n');
+    }
+
+    if (cli.about.len != 0 or cli.version != null or cli.long_about != null) {
+        try writer.writeByte('\n');
+    }
+    try writer.print("Usage: {s} <command> [options]\n", .{cli.name});
+
+    try writer.writeAll("\nCommands:\n");
+    inline for (cli.commands) |command| {
+        try writer.print("  {s}  {s}\n", .{ command.name, command.about });
+    }
+
+    try writer.writeAll("\nOptions:\n  --help  Print help\n");
+}
+
+fn writeCommandHelp(
+    comptime cli: schema.Cli,
+    writer: *std.Io.Writer,
+    comptime command: schema.Command,
+) std.Io.Writer.Error!void {
+    if (command.about.len != 0) {
+        try writer.writeAll(command.about);
+        try writer.writeByte('\n');
+    }
+    if (command.long_about) |long_about| {
+        try writer.writeByte('\n');
+        try writer.writeAll(long_about);
+        try writer.writeByte('\n');
+    }
+
+    if (command.about.len != 0 or command.long_about != null) {
+        try writer.writeByte('\n');
+    }
+    try writer.print("Usage: {s} {s}", .{ cli.name, command.name });
+    inline for (command.args) |arg| {
+        switch (arg) {
+            .positional => |positional| {
+                try writer.writeAll(if (positional.required) " <" else " [<");
+                try writer.writeAll(positional.id);
+                try writer.writeAll(if (positional.required) ">" else ">]");
+                if (positional.multiple) try writer.writeAll("...");
+            },
+            .flag, .option => {},
+        }
+    }
+    if (commandHasNamed(command)) try writer.writeAll(" [options]");
+    try writer.writeByte('\n');
+
+    if (commandHasPositionals(command)) {
+        try writer.writeAll("\nArguments:\n");
+        inline for (command.args) |arg| {
+            switch (arg) {
+                .positional => |positional| {
+                    try writer.print("  <{s}>  {s}\n", .{ positional.id, positional.help });
+                },
+                else => {},
+            }
+        }
+    }
+
+    if (commandHasNamed(command)) {
+        try writer.writeAll("\nOptions:\n");
+        inline for (command.args) |arg| {
+            switch (arg) {
+                .flag => |flag| {
+                    try writer.writeAll("  ");
+                    if (flag.short) |short| try writer.print("-{s}, ", .{short});
+                    try writer.print("--{s}  {s}\n", .{ flag.id, flag.help });
+                },
+                .option => |option| {
+                    try writer.writeAll("  ");
+                    if (option.short) |short| try writer.print("-{s}, ", .{short});
+                    try writer.print("--{s} <value>  {s}", .{ option.id, option.help });
+                    if (option.required) try writer.writeAll(" (required)");
+                    if (option.default) |default| try writer.print(" (default: {s})", .{default});
+                    try writer.writeByte('\n');
+                },
+                .positional => {},
+            }
+        }
+    }
+}
+
+fn commandHasNamed(comptime command: schema.Command) bool {
+    for (command.args) |arg| {
+        switch (arg) {
+            .flag, .option => return true,
+            .positional => {},
+        }
+    }
+    return false;
+}
+
+fn commandHasPositionals(comptime command: schema.Command) bool {
+    for (command.args) |arg| {
+        switch (arg) {
+            .positional => return true,
+            .flag, .option => {},
+        }
+    }
+    return false;
 }
 
 fn validateResult(comptime cli: schema.Cli, comptime ResultType: type) void {
@@ -496,4 +659,62 @@ test "parse : success : command without arguments" {
         ParseError.ArgumentNotFound,
         Cli.parseSlice(std.testing.allocator, &.{ "hello", "world", "extra" }),
     );
+}
+
+test "help : program" {
+    const Fetch = struct {};
+    const Result = union(enum) { fetch: Fetch };
+    const Cli = Generate(.{
+        .name = "zommand",
+        .version = "0.0.1",
+        .about = "Build CLIs.",
+        .commands = &.{.{
+            .name = "fetch",
+            .about = "Fetch a package.",
+        }},
+    }, Result);
+
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    try Cli.writeHelp(&out.writer, null);
+    const text = out.writer.buffered();
+
+    try std.testing.expect(std.mem.startsWith(u8, text, "zommand 0.0.1\nBuild CLIs.\n"));
+    try std.testing.expect(std.mem.indexOf(u8, text, "fetch  Fetch a package.") != null);
+}
+
+test "help : command" {
+    const Download = struct { url: []const u8, path: []const u8 };
+    const Result = union(enum) { download: Download };
+    const command: schema.Command = .{
+        .name = "download",
+        .about = "Download a file.",
+        .args = &.{
+            .{ .positional = .{ .id = "url", .help = "File URL", .required = true } },
+            .{ .option = .{ .id = "path", .short = "p", .help = "Directory", .default = "." } },
+        },
+    };
+    const Cli = Generate(.{
+        .name = "downloader",
+        .commands = &.{command},
+    }, Result);
+
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    try Cli.writeHelp(&out.writer, command);
+    const text = out.writer.buffered();
+
+    try std.testing.expect(std.mem.indexOf(
+        u8,
+        text,
+        "Usage: downloader download <url> [options]",
+    ) != null);
+    try std.testing.expect(std.mem.indexOf(u8, text, "<url>  File URL") != null);
+    try std.testing.expect(std.mem.indexOf(
+        u8,
+        text,
+        "-p, --path <value>  Directory (default: .)",
+    ) != null);
 }

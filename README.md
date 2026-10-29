@@ -60,13 +60,18 @@ The generated module has explicit command types and `parse`:
 ```zig
 const cli = @import("cli");
 
+const io = init.io;
 const arena = init.arena.allocator();
 const args = init.minimal.args;
 
-switch (try cli.parse(arena, args)) {
+const result = try cli.parse(io, arena, args);
+
+switch (result) {
     .print => |print| std.debug.print("hello, {s}!\n", .{print.name}),
 }
 ```
+
+`--help` prints program or command help using the schema's `about`, `long_about`, and `help` fields.
 
 See [`src/schema.zig`](src/schema.zig) for all fields.
 

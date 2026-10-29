@@ -9,7 +9,7 @@
                 .{
                     .option = .{
                         .id = "name",
-                        .help = "Name to greet (default: world)",
+                        .help = "Name to greet",
                         .default = "world",
                     },
                 },

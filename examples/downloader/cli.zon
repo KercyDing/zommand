@@ -17,7 +17,7 @@
                     .option = .{
                         .id = "path",
                         .short = "p",
-                        .help = "Directory to save the file (default: .)",
+                        .help = "Directory to save the file",
                         .default = ".",
                     },
                 },
