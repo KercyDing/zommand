@@ -12,8 +12,8 @@ pub const ParseError = error{
     TooManyArguments,
 };
 
-pub fn Generate(comptime cli: *const schema.Cli) type {
-    const ResultType = makeResultType(cli.*);
+pub fn Generate(comptime cli: schema.Cli, comptime ResultType: type) type {
+    validateResult(cli, ResultType);
 
     return struct {
         pub const Result = ResultType;
@@ -30,8 +30,13 @@ pub fn Generate(comptime cli: *const schema.Cli) type {
 
             inline for (cli.commands) |command| {
                 if (std.mem.eql(u8, args[1], command.name)) {
-                    const value = try parseCommand(command, allocator, args[2..]);
-                    return @unionInit(Result, command.name, value);
+                    const value = try parseCommand(
+                        command,
+                        @FieldType(ResultType, command.name),
+                        allocator,
+                        args[2..],
+                    );
+                    return @unionInit(ResultType, command.name, value);
                 }
             }
 
@@ -52,85 +57,102 @@ pub fn Generate(comptime cli: *const schema.Cli) type {
     };
 }
 
-fn makeResultType(comptime cli: schema.Cli) type {
-    const field_count = cli.commands.len;
-
-    if (field_count == 0) {
+fn validateResult(comptime cli: schema.Cli, comptime ResultType: type) void {
+    if (cli.commands.len == 0) {
         @compileError("CLI must contain at least one command!");
     }
 
-    var field_names: [field_count][]const u8 = undefined;
-    var field_types: [field_count]type = undefined;
-    var field_values: [field_count]u32 = undefined;
-    var field_attrs: [field_count]std.lang.Type.Union.FieldAttributes = @splat(.{});
-
-    for (cli.commands, 0..) |cmd, i| {
-        field_names[i] = cmd.name;
-        field_types[i] = makeCommandType(cmd);
-        field_values[i] = @intCast(i);
+    const union_info = switch (@typeInfo(ResultType)) {
+        .@"union" => |info| info,
+        else => @compileError("result type must be a union(enum)"),
+    };
+    if (union_info.tag_type == null) {
+        @compileError("result type must be a union(enum)");
+    }
+    if (union_info.field_names.len != cli.commands.len) {
+        @compileError("result union must contain exactly one field per command");
     }
 
-    const CommandTag = @Enum(
-        u32,
-        .exhaustive,
-        &field_names,
-        &field_values,
-    );
-
-    return @Union(
-        .auto,
-        CommandTag,
-        &field_names,
-        &field_types,
-        &field_attrs,
-    );
+    inline for (cli.commands) |command| {
+        if (!hasField(union_info.field_names, command.name)) {
+            @compileError(std.fmt.comptimePrint(
+                "result union is missing field '{s}'",
+                .{command.name},
+            ));
+        }
+        validateCommand(command);
+        validateCommandType(command, @FieldType(ResultType, command.name));
+    }
 }
 
-fn makeCommandType(comptime command: schema.Command) type {
-    validateCommand(command);
-
-    const field_count = command.args.len;
-
-    var field_names: [field_count][]const u8 = undefined;
-    var field_types: [field_count]type = undefined;
-    var field_attrs: [field_count]std.lang.Type.Struct.FieldAttributes = @splat(.{});
-
-    for (command.args, 0..) |arg, i| {
-        field_names[i] = switch (arg) {
-            .positional => |pos| pos.id,
-            .flag => |flag| flag.id,
-            .option => |option| option.id,
-        };
-
-        field_types[i] = switch (arg) {
-            .positional => |pos| if (pos.multiple)
-                []const []const u8
-            else if (pos.required)
-                []const u8
-            else
-                ?[]const u8,
-
-            .flag => |flag| if (flag.multiple)
-                usize
-            else
-                bool,
-
-            .option => |option| if (option.multiple)
-                []const []const u8
-            else if (option.required or option.default != null)
-                []const u8
-            else
-                ?[]const u8,
-        };
+fn validateCommandType(comptime command: schema.Command, comptime Command: type) void {
+    const struct_info = switch (@typeInfo(Command)) {
+        .@"struct" => |info| info,
+        else => @compileError(std.fmt.comptimePrint(
+            "command '{s}' must be represented by a struct",
+            .{command.name},
+        )),
+    };
+    if (struct_info.field_names.len != command.args.len) {
+        @compileError(std.fmt.comptimePrint(
+            "command '{s}' must have exactly one field per argument",
+            .{command.name},
+        ));
     }
 
-    return @Struct(
-        .auto,
-        null,
-        &field_names,
-        &field_types,
-        &field_attrs,
-    );
+    inline for (command.args) |arg| {
+        const id = argId(arg);
+        if (!hasField(struct_info.field_names, id)) {
+            @compileError(std.fmt.comptimePrint(
+                "command '{s}' is missing field '{s}'",
+                .{ command.name, id },
+            ));
+        }
+        if (@FieldType(Command, id) != expectedType(arg)) {
+            @compileError(std.fmt.comptimePrint(
+                "field '{s}' of command '{s}' has an unexpected type",
+                .{ id, command.name },
+            ));
+        }
+    }
+}
+
+fn hasField(comptime fields: anytype, comptime name: []const u8) bool {
+    inline for (fields) |field| {
+        if (std.mem.eql(u8, field, name)) return true;
+    }
+    return false;
+}
+
+fn argId(comptime arg: schema.Arg) []const u8 {
+    return switch (arg) {
+        .positional => |value| value.id,
+        .flag => |value| value.id,
+        .option => |value| value.id,
+    };
+}
+
+fn expectedType(comptime arg: schema.Arg) type {
+    return switch (arg) {
+        .positional => |value| if (value.multiple)
+            []const []const u8
+        else if (value.required)
+            []const u8
+        else
+            ?[]const u8,
+
+        .flag => |value| if (value.multiple)
+            usize
+        else
+            bool,
+
+        .option => |value| if (value.multiple)
+            []const []const u8
+        else if (value.required or value.default != null)
+            []const u8
+        else
+            ?[]const u8,
+    };
 }
 
 fn validateCommand(comptime command: schema.Command) void {
@@ -151,126 +173,131 @@ fn validateCommand(comptime command: schema.Command) void {
 
 fn parseCommand(
     comptime command: schema.Command,
+    comptime Command: type,
     allocator: std.mem.Allocator,
     args: []const [:0]const u8,
-) ParseError!makeCommandType(command) {
-    var counts: [command.args.len]usize = @splat(0);
-    var positional_index: usize = 0;
-    var match_count: usize = 0;
-    var index: usize = 0;
+) ParseError!Command {
+    if (comptime command.args.len == 0) {
+        if (args.len != 0) return ParseError.ArgumentNotFound;
+        return .{};
+    } else {
+        var counts: [command.args.len]usize = @splat(0);
+        var positional_index: usize = 0;
+        var match_count: usize = 0;
+        var index: usize = 0;
 
-    while (index < args.len) {
-        const match = try matchArg(command, args, index, &positional_index);
-        match_count += 1;
-        if (match_count > ARG_COUNT_MAX) return ParseError.TooManyArguments;
-        counts[match.arg_index] += 1;
-        index += match.consumed;
-    }
-
-    inline for (command.args, 0..) |arg, arg_index| {
-        const required = switch (arg) {
-            .positional => |value| value.required,
-            .flag => false,
-            .option => |value| value.required and value.default == null,
-        };
-        if (required and counts[arg_index] == 0) {
-            return ParseError.MissingRequiredArgument;
+        while (index < args.len) {
+            const match = try matchArg(command, args, index, &positional_index);
+            match_count += 1;
+            if (match_count > ARG_COUNT_MAX) return ParseError.TooManyArguments;
+            counts[match.arg_index] += 1;
+            index += match.consumed;
         }
-    }
 
-    const Command = makeCommandType(command);
-    var result: Command = undefined;
-
-    inline for (command.args) |arg| {
-        switch (arg) {
-            .positional => |positional| {
-                @field(result, positional.id) = if (positional.multiple)
-                    &.{}
-                else if (positional.required)
-                    ""
-                else
-                    null;
-            },
-            .flag => |flag| {
-                @field(result, flag.id) = if (flag.multiple) 0 else false;
-            },
-            .option => |option| {
-                @field(result, option.id) = if (option.multiple)
-                    &.{}
-                else if (option.default) |default|
-                    default
-                else if (option.required)
-                    ""
-                else
-                    null;
-            },
-        }
-    }
-
-    errdefer freeCommandSlices(command, allocator, &result);
-
-    inline for (command.args, 0..) |arg, arg_index| {
-        switch (arg) {
-            .positional => |positional| {
-                if (positional.multiple) {
-                    @field(result, positional.id) = allocator.alloc(
-                        []const u8,
-                        counts[arg_index],
-                    ) catch return ParseError.OutOfMemory;
-                }
-            },
-            .flag => {},
-            .option => |option| {
-                if (option.multiple) {
-                    @field(result, option.id) = allocator.alloc(
-                        []const u8,
-                        counts[arg_index],
-                    ) catch return ParseError.OutOfMemory;
-                }
-            },
-        }
-    }
-
-    var fill_counts: [command.args.len]usize = @splat(0);
-    positional_index = 0;
-    index = 0;
-    while (index < args.len) {
-        const match = try matchArg(command, args, index, &positional_index);
         inline for (command.args, 0..) |arg, arg_index| {
-            if (match.arg_index == arg_index) {
-                switch (arg) {
-                    .positional => |positional| {
-                        if (positional.multiple) {
-                            const values: [][]const u8 = @constCast(@field(result, positional.id));
-                            values[fill_counts[arg_index]] = match.value.?;
-                            fill_counts[arg_index] += 1;
-                        } else {
-                            @field(result, positional.id) = match.value.?;
-                        }
-                    },
-                    .flag => |flag| {
-                        if (flag.multiple) {
-                            @field(result, flag.id) += 1;
-                        } else {
-                            @field(result, flag.id) = true;
-                        }
-                    },
-                    .option => |option| {
-                        if (option.multiple) {
-                            const values: [][]const u8 = @constCast(@field(result, option.id));
-                            values[fill_counts[arg_index]] = match.value.?;
-                            fill_counts[arg_index] += 1;
-                        } else {
-                            @field(result, option.id) = match.value.?;
-                        }
-                    },
-                }
+            const required = switch (arg) {
+                .positional => |value| value.required,
+                .flag => false,
+                .option => |value| value.required and value.default == null,
+            };
+            if (required and counts[arg_index] == 0) {
+                return ParseError.MissingRequiredArgument;
             }
         }
-        index += match.consumed;
-    }
 
-    return result;
+        var result: Command = undefined;
+
+        inline for (command.args) |arg| {
+            switch (arg) {
+                .positional => |positional| {
+                    @field(result, positional.id) = if (positional.multiple)
+                        &.{}
+                    else if (positional.required)
+                        ""
+                    else
+                        null;
+                },
+                .flag => |flag| {
+                    @field(result, flag.id) = if (flag.multiple) 0 else false;
+                },
+                .option => |option| {
+                    @field(result, option.id) = if (option.multiple)
+                        &.{}
+                    else if (option.default) |default|
+                        default
+                    else if (option.required)
+                        ""
+                    else
+                        null;
+                },
+            }
+        }
+
+        errdefer freeCommandSlices(command, allocator, &result);
+
+        inline for (command.args, 0..) |arg, arg_index| {
+            switch (arg) {
+                .positional => |positional| {
+                    if (positional.multiple) {
+                        @field(result, positional.id) = allocator.alloc(
+                            []const u8,
+                            counts[arg_index],
+                        ) catch return ParseError.OutOfMemory;
+                    }
+                },
+                .flag => {},
+                .option => |option| {
+                    if (option.multiple) {
+                        @field(result, option.id) = allocator.alloc(
+                            []const u8,
+                            counts[arg_index],
+                        ) catch return ParseError.OutOfMemory;
+                    }
+                },
+            }
+        }
+
+        var fill_counts: [command.args.len]usize = @splat(0);
+        positional_index = 0;
+        index = 0;
+        while (index < args.len) {
+            const match = try matchArg(command, args, index, &positional_index);
+            inline for (command.args, 0..) |arg, arg_index| {
+                if (match.arg_index == arg_index) {
+                    switch (arg) {
+                        .positional => |positional| {
+                            if (positional.multiple) {
+                                const values: [][]const u8 = @constCast(@field(result, positional.id));
+                                values[fill_counts[arg_index]] = match.value.?;
+                                fill_counts[arg_index] += 1;
+                            } else {
+                                @field(result, positional.id) = match.value.?;
+                            }
+                        },
+                        .flag => |flag| {
+                            if (flag.multiple) {
+                                @field(result, flag.id) += 1;
+                            } else {
+                                @field(result, flag.id) = true;
+                            }
+                        },
+                        .option => |option| {
+                            if (option.multiple) {
+                                const values: [][]const u8 = @constCast(@field(result, option.id));
+                                values[fill_counts[arg_index]] = match.value.?;
+                                fill_counts[arg_index] += 1;
+                            } else {
+                                @field(result, option.id) = match.value.?;
+                            }
+                        },
+                    }
+                }
+            }
+            index += match.consumed;
+        }
+
+        return result;
+    }
 }
 
 const ArgMatch = struct {
@@ -353,7 +380,7 @@ fn stripHyphen(value: []const u8) []const u8 {
 fn freeCommandSlices(
     comptime command: schema.Command,
     allocator: std.mem.Allocator,
-    result: *makeCommandType(command),
+    result: anytype,
 ) void {
     inline for (command.args) |arg| {
         const multiple = switch (arg) {
@@ -367,49 +394,20 @@ fn freeCommandSlices(
                 .flag => unreachable,
                 .option => |value| value.id,
             };
-            const values = @field(result, id);
+            const values = @field(result.*, id);
             if (values.len > 0) allocator.free(values);
         }
     }
 }
 
-test "makeCommandType : success : positional and flag" {
-    const command: schema.Command = .{
-        .name = "fetch",
-        .args = &.{
-            .{ .positional = .{
-                .id = "url",
-                .required = true,
-            } },
-            .{ .flag = .{
-                .id = "force",
-            } },
-        },
+test "Generate : success : preserves schema and explicit result" {
+    const Fetch = struct {
+        url: []const u8,
+        force: bool,
     };
+    const Result = union(enum) { fetch: Fetch };
 
-    const Fetch = makeCommandType(command);
-
-    try std.testing.expect(
-        @FieldType(Fetch, "url") == []const u8,
-    );
-    try std.testing.expect(
-        @FieldType(Fetch, "force") == bool,
-    );
-
-    const value: Fetch = .{
-        .url = "https://example.com",
-        .force = true,
-    };
-
-    try std.testing.expectEqualStrings(
-        "https://example.com",
-        value.url,
-    );
-    try std.testing.expect(value.force);
-}
-
-test "Generate : success : preserve schema and generate result type" {
-    const Cli = Generate(&.{
+    const Cli = Generate(.{
         .name = "zommand",
         .commands = &.{.{
             .name = "fetch",
@@ -418,20 +416,70 @@ test "Generate : success : preserve schema and generate result type" {
                 .{ .flag = .{ .id = "force", .short = "f" } },
             },
         }},
-    });
+    }, Result);
 
     try std.testing.expectEqualStrings(
         "zommand",
         Cli.programName(),
     );
 
-    const Fetch = @FieldType(Cli.Result, "fetch");
-
-    try std.testing.expect(
-        @FieldType(Fetch, "url") == []const u8,
+    var value = try Cli.parse(
+        std.testing.allocator,
+        &.{ "zommand", "fetch", "--force", "https://example.com" },
     );
+    defer Cli.deinit(&value, std.testing.allocator);
 
-    try std.testing.expect(
-        @FieldType(Fetch, "force") == bool,
+    try std.testing.expectEqualStrings(
+        "https://example.com",
+        value.fetch.url,
+    );
+    try std.testing.expect(value.fetch.force);
+}
+
+test "deinit : success : frees repeated option values" {
+    const Build = struct {
+        include: []const []const u8,
+    };
+    const Result = union(enum) { build: Build };
+
+    const Cli = Generate(.{
+        .name = "zommand",
+        .commands = &.{.{
+            .name = "build",
+            .args = &.{
+                .{ .option = .{ .id = "include", .multiple = true } },
+            },
+        }},
+    }, Result);
+
+    var value = try Cli.parse(
+        std.testing.allocator,
+        &.{ "zommand", "build", "--include", "src", "--include", "tests" },
+    );
+    defer Cli.deinit(&value, std.testing.allocator);
+
+    try std.testing.expectEqual(@as(usize, 2), value.build.include.len);
+    try std.testing.expectEqualStrings("src", value.build.include[0]);
+    try std.testing.expectEqualStrings("tests", value.build.include[1]);
+}
+
+test "parse : success : command without arguments" {
+    const World = struct {};
+    const Result = union(enum) { world: World };
+
+    const Cli = Generate(.{
+        .name = "hello",
+        .commands = &.{.{
+            .name = "world",
+        }},
+    }, Result);
+
+    var value = try Cli.parse(std.testing.allocator, &.{ "hello", "world" });
+    defer Cli.deinit(&value, std.testing.allocator);
+    try std.testing.expectEqual(World{}, value.world);
+
+    try std.testing.expectError(
+        ParseError.ArgumentNotFound,
+        Cli.parse(std.testing.allocator, &.{ "hello", "world", "extra" }),
     );
 }

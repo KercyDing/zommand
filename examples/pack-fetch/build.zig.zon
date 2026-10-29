@@ -15,7 +15,6 @@
     .paths = .{
         "build.zig",
         "build.zig.zon",
-        "cli.ziggy",
         "src",
     },
 }

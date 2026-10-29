@@ -1,14 +1,14 @@
 const std = @import("std");
 const builtin = @import("builtin");
+const cli = @import("cli");
 
-const Cli = @import("cli_schema").Cli;
-const Init = @FieldType(Cli.Result, "init");
+const Init = cli.Init;
 
 pub fn main(init: std.process.Init) !void {
     const allocator = init.arena.allocator();
     const args = try init.minimal.args.toSlice(allocator);
 
-    const result = try Cli.parse(allocator, args);
+    const result = try cli.parse(allocator, args);
 
     switch (result) {
         .init => |i| try runInit(init.io, allocator, init.environ_map, i),

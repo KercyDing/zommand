@@ -9,12 +9,10 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
-    const generate_schema = b.addRunArtifact(zommand.artifact("command-codegen"));
-    generate_schema.addFileArg(b.path("cli.ziggy"));
-    const generated_schema = generate_schema.addOutputFileArg("cli_schema.zig");
-
-    const cli_schema = b.createModule(.{
-        .root_source_file = generated_schema,
+    const generate = b.addRunArtifact(zommand.artifact("command-codegen"));
+    generate.addFileArg(b.path("src/cli.zon"));
+    const cli = b.createModule(.{
+        .root_source_file = generate.addOutputFileArg("cli.zig"),
         .imports = &.{
             .{ .name = "command", .module = zommand.module("command") },
         },
@@ -25,7 +23,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
         .imports = &.{
-            .{ .name = "cli_schema", .module = cli_schema },
+            .{ .name = "cli", .module = cli },
         },
     });
 
@@ -35,18 +33,12 @@ pub fn build(b: *std.Build) void {
     });
     b.installArtifact(exe);
 
-    const run_cmd = b.addRunArtifact(exe);
-    run_cmd.addPassthruArgs();
-
-    const run_step = b.step("run", "Run scaffold");
-    run_step.dependOn(&run_cmd.step);
-
     const test_mod = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
         .imports = &.{
-            .{ .name = "cli_schema", .module = cli_schema },
+            .{ .name = "cli", .module = cli },
         },
     });
     const tests = b.addTest(.{

@@ -1,15 +1,15 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const curl = @import("curl");
+const cli = @import("cli");
 
-const Cli = @import("cli_schema").Cli;
-const Fetch = @FieldType(Cli.Result, "fetch");
+const Fetch = cli.Fetch;
 
 pub fn main(init: std.process.Init) !void {
     const allocator = init.arena.allocator();
     const args = try init.minimal.args.toSlice(allocator);
 
-    const result = try Cli.parse(allocator, args);
+    const result = try cli.parse(allocator, args);
 
     switch (result) {
         .fetch => |f| try runFetch(init.io, allocator, init.environ_map, f),

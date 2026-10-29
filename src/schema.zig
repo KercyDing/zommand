@@ -88,7 +88,7 @@ pub const Flag = struct {
 
     /// Optional short option name.
     ///
-    /// Ziggy represents it as a string:
+    /// ZON represents it as a string:
     ///
     /// .short = "f"
     short: ?[]const u8 = null,

@@ -2,19 +2,12 @@
     .name = .zommand,
     .version = "0.0.1",
     .minimum_zig_version = "0.17.0",
-    .dependencies = .{
-        .ziggy = .{
-            .url = "git+https://github.com/kristoff-it/ziggy?ref=main#c4fc096122142cef45468c117ef50a26c2ba18c3",
-            .hash = "ziggy-0.2.0-kTg8vwzzBwAjA_nM867ZSuFmpEKqZK389SFfzgcDw9VH",
-        },
-    },
+    .fingerprint = 0x7c8c33c9edc51f3e,
     .paths = .{
         "build.zig",
         "build.zig.zon",
         "src",
-        "examples",
         "LICENSE",
         "README.md",
     },
-    .fingerprint = 0x7c8c33c9edc51f3e,
 }
