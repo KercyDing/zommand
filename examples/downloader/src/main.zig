@@ -5,9 +5,10 @@ const cli = @import("cli");
 const Download = cli.Download;
 
 pub fn main(init: std.process.Init) !void {
-    const allocator = init.arena.allocator();
+    const arena = init.arena.allocator();
+    const args = init.minimal.args;
 
-    const result = try cli.parse(allocator, init.minimal.args);
+    const result = try cli.parse(arena, args);
 
     switch (result) {
         .download => |download| try runDownload(init.io, init.gpa, download),

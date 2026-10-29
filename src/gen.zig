@@ -23,15 +23,17 @@ pub fn Generate(comptime cli: schema.Cli, comptime ResultType: type) type {
             return cli.name;
         }
 
+        /// Parses process arguments. `arena` must be arena-style: the returned
+        /// result borrows the converted argument strings.
         pub fn parse(
-            allocator: std.mem.Allocator,
+            arena: std.mem.Allocator,
             args: std.process.Args,
         ) ParseError!Result {
-            const slice = args.toSlice(allocator) catch |err| switch (err) {
+            const slice = args.toSlice(arena) catch |err| switch (err) {
                 error.OutOfMemory => return ParseError.OutOfMemory,
                 else => return ParseError.ArgumentsUnavailable,
             };
-            return parseSlice(allocator, slice);
+            return parseSlice(arena, slice);
         }
 
         fn parseSlice(

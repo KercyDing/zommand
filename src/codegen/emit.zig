@@ -47,10 +47,10 @@ pub fn emit(allocator: std.mem.Allocator, cli: schema.Cli, writer: *std.Io.Write
         \\};
         \\
         \\pub fn parse(
-        \\    allocator: std.mem.Allocator,
+        \\    arena: std.mem.Allocator,
         \\    args: std.process.Args,
         \\) ParseError!Result {
-        \\    return Parser.parse(allocator, args);
+        \\    return Parser.parse(arena, args);
         \\}
         \\
         \\pub fn deinit(result: *Result, allocator: std.mem.Allocator) void {
