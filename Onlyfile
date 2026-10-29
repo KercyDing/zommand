@@ -10,7 +10,7 @@ build():
 [pass] Build complete.
 [fail] Build failed.
 build-examples():
-    | cd examples/hello
+    | cd examples/greeting
     | zig build -Doptimize=safe -Dstrip=true
 
     | cd examples/downloader
@@ -34,7 +34,7 @@ clean():
     | cd examples/downloader
     | rm -rf .zig-cache zig-out
 
-    | cd examples/hello
+    | cd examples/greeting
     | rm -rf .zig-cache zig-out
 
 [help] Format the codebase

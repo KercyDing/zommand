@@ -1,8 +1,8 @@
 .{
-    .name = .hello,
+    .name = .greeting,
     .version = "0.0.0",
     .minimum_zig_version = "0.17.0",
-    .fingerprint = 0x3610a68644c6e61b,
+    .fingerprint = 0x46e3a4ab46da7a15,
     .dependencies = .{
         .zommand = .{
             .path = "../..",

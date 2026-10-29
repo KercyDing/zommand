@@ -23,7 +23,7 @@ pub fn build(b: *std.Build) void {
     });
 
     const exe = b.addExecutable(.{
-        .name = "hello",
+        .name = "greeting",
         .root_module = exe_mod,
     });
     b.installArtifact(exe);

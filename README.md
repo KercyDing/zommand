@@ -14,7 +14,7 @@ Declare the schema in ZON:
 
 ```zig
 .{
-    .name = "hello",
+    .name = "greeting",
     .version = "0.0.1",
     .commands = .{
         .{
@@ -24,7 +24,7 @@ Declare the schema in ZON:
                 .{
                     .option = .{
                         .id = "name",
-                        .help = "Name to greet (default: world)",
+                        .help = "Name to greet",
                         .default = "world",
                     },
                 },
@@ -80,13 +80,13 @@ See [`src/schema.zig`](src/schema.zig) for all fields.
 
 Complete projects live in [`examples`](examples):
 
-- [`hello`](examples/hello): one command, one option
+- [`greeting`](examples/greeting): one command, one option
 - [`downloader`](examples/downloader): stream a URL into a directory
 
 ```bash
 only build-examples
 
-./examples/hello/zig-out/bin/hello print --name xxx
+./examples/greeting/zig-out/bin/greeting print --name xxx
 ./examples/downloader/zig-out/bin/downloader download https://ziglang.org/download/index.json --path ./.zig-cache/tmp
 ```
 

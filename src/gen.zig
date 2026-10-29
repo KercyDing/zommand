@@ -555,7 +555,7 @@ test "parse command without arguments" {
     const Result = union(enum) { world: World };
 
     const Cli = Generate(.{
-        .name = "hello",
+        .name = "greeting",
         .version = .{ .major = 0, .minor = 0, .patch = 1 },
         .commands = &.{.{
             .name = "world",
