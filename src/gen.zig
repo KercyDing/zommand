@@ -45,7 +45,7 @@ pub fn Generate(comptime cli: schema.Cli, comptime ResultType: type) type {
 
             var help_requested = false;
             for (slice[1..]) |arg| {
-                if (std.mem.eql(u8, arg, "--help")) {
+                if (std.mem.eql(u8, arg, "--help") or std.mem.eql(u8, arg, "-h")) {
                     help_requested = true;
                     break;
                 }

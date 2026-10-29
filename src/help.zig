@@ -49,7 +49,7 @@ fn writeProgram(comptime cli: schema.Cli, writer: *std.Io.Writer) std.Io.Writer.
         try writer.print("  {s}  {s}\n", .{ command.name, command.about });
     }
 
-    try writer.writeAll("\nOptions:\n  --help  Print help\n");
+    try writer.writeAll("\nOptions:\n  -h, --help  Print help\n");
 }
 
 fn writeCommand(
