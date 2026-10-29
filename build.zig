@@ -14,13 +14,13 @@ pub fn build(b: *std.Build) void {
     const schema_mod = b.createModule(.{
         .root_source_file = b.path("src/schema.zig"),
         .target = b.graph.host,
-        .optimize = .Debug,
+        .optimize = .debug,
     });
 
     const codegen_mod = b.createModule(.{
         .root_source_file = b.path("src/codegen/main.zig"),
         .target = b.graph.host,
-        .optimize = .Debug,
+        .optimize = .debug,
         .imports = &.{
             .{ .name = "schema", .module = schema_mod },
         },
