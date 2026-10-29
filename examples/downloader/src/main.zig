@@ -71,7 +71,7 @@ fn fileNameFromUrl(url: []const u8) []const u8 {
     return if (name.len == 0) "download" else name;
 }
 
-test "fileNameFromUrl" {
+test "file name from url" {
     try std.testing.expectEqualStrings(
         "5.0.0.tar.gz",
         fileNameFromUrl("https://github.com/opencv/opencv/archive/refs/tags/5.0.0.tar.gz/"),

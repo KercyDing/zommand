@@ -577,7 +577,7 @@ fn freeCommandSlices(
     }
 }
 
-test "Generate : success : preserves schema and explicit result" {
+test "generate and parse explicit result" {
     const Fetch = struct {
         url: []const u8,
         force: bool,
@@ -613,7 +613,7 @@ test "Generate : success : preserves schema and explicit result" {
     try std.testing.expect(value.fetch.force);
 }
 
-test "deinit : success : frees repeated option values" {
+test "deinit frees repeated values" {
     const Build = struct {
         include: []const []const u8,
     };
@@ -640,7 +640,7 @@ test "deinit : success : frees repeated option values" {
     try std.testing.expectEqualStrings("tests", value.build.include[1]);
 }
 
-test "parse : success : command without arguments" {
+test "parse command without arguments" {
     const World = struct {};
     const Result = union(enum) { world: World };
 
@@ -661,7 +661,7 @@ test "parse : success : command without arguments" {
     );
 }
 
-test "help : program" {
+test "program help" {
     const Fetch = struct {};
     const Result = union(enum) { fetch: Fetch };
     const Cli = Generate(.{
@@ -684,7 +684,7 @@ test "help : program" {
     try std.testing.expect(std.mem.indexOf(u8, text, "fetch  Fetch a package.") != null);
 }
 
-test "help : command" {
+test "command help" {
     const Download = struct { url: []const u8, path: []const u8 };
     const Result = union(enum) { download: Download };
     const command: schema.Command = .{
