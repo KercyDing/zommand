@@ -13,6 +13,8 @@ pub const ParseError = gen.ParseError;
 
 // =============== Tests ===============
 test {
-    _ = schema;
-    _ = gen;
+    const std = @import("std");
+
+    std.testing.refAllDecls(schema);
+    std.testing.refAllDecls(gen);
 }
