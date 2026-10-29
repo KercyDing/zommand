@@ -12,11 +12,6 @@ pub fn build(b: *std.Build) void {
         .schema = b.path("cli.zon"),
     });
 
-    const dusty = b.dependency("dusty", .{
-        .target = target,
-        .optimize = optimize,
-    });
-
     const exe_mod = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
         .target = target,
@@ -24,7 +19,6 @@ pub fn build(b: *std.Build) void {
         .strip = strip,
         .imports = &.{
             .{ .name = "cli", .module = cli },
-            .{ .name = "dusty", .module = dusty.module("dusty") },
         },
     });
 
@@ -40,7 +34,6 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .imports = &.{
             .{ .name = "cli", .module = cli },
-            .{ .name = "dusty", .module = dusty.module("dusty") },
         },
     });
     const tests = b.addTest(.{

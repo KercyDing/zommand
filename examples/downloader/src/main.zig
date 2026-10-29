@@ -1,57 +1,57 @@
 const std = @import("std");
-const http = @import("dusty");
 const cli = @import("cli");
 
 const Download = cli.Download;
 
 pub fn main(init: std.process.Init) !void {
-    const io = init.io;
     const arena = init.arena.allocator();
     const args = init.minimal.args;
 
-    const result = try cli.parse(io, arena, args);
+    const result = try cli.parse(init.io, arena, args);
 
     switch (result) {
-        .download => |download| try runDownload(init.io, init.gpa, download),
+        .download => |download| try runDownload(init, arena, download),
     }
 }
 
-fn runDownload(io: std.Io, allocator: std.mem.Allocator, download: Download) !void {
+fn runDownload(init: std.process.Init, arena: std.mem.Allocator, download: Download) !void {
+    const io = init.io;
     const name = fileNameFromUrl(download.url);
 
     var dir = try std.Io.Dir.createDirPathOpen(std.Io.Dir.cwd(), io, download.path, .{});
     defer dir.close(io);
 
     var file = try dir.createFile(io, name, .{});
-    defer file.close(io);
+    var keep = false;
+    defer {
+        file.close(io);
+        if (!keep) dir.deleteFile(io, name) catch {};
+    }
 
-    var client = http.Client.init(allocator, io, .{});
+    var client: std.http.Client = .{
+        .allocator = init.gpa,
+        .io = io,
+    };
     defer client.deinit();
+    try client.initDefaultProxies(arena, init.environ_map);
 
-    var response = try client.fetch(download.url, .{ .stream = true });
-    defer response.deinit();
+    var write_buffer: [64 * 1024]u8 = undefined;
+    var writer = file.writer(io, &write_buffer);
 
-    const status = @backingInt(response.status());
+    const result = try client.fetch(.{
+        .location = .{ .url = download.url },
+        .response_writer = &writer.interface,
+    });
+
+    try writer.interface.flush();
+
+    const status = @backingInt(result.status);
     if (status < 200 or status >= 300) {
         std.log.err("unexpected HTTP status {d}", .{status});
         return error.UnexpectedHttpStatus;
     }
 
-    var read_buffer: [16 * 1024]u8 = undefined;
-    var body = try response.reader(&read_buffer);
-
-    var write_buffer: [64 * 1024]u8 = undefined;
-    var writer = file.writer(io, &write_buffer);
-
-    while (true) {
-        const written = body.interface.stream(&writer.interface, .unlimited) catch |err| switch (err) {
-            error.EndOfStream => break,
-            else => return err,
-        };
-        if (written == 0) break;
-    }
-    try writer.interface.flush();
-
+    keep = true;
     std.debug.print("Downloaded {s}\n", .{name});
 }
 

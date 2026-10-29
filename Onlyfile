@@ -32,7 +32,7 @@ clean():
     rm -rf .zig-cache zig-out
 
     | cd examples/downloader
-    | rm -rf .zig-cache zig-out zig-pkg
+    | rm -rf .zig-cache zig-out
 
     | cd examples/hello
     | rm -rf .zig-cache zig-out
