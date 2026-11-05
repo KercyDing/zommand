@@ -1,7 +1,7 @@
 .{
     .name = .zommand,
     .version = "0.0.1",
-    .minimum_zig_version = "0.17.0",
+    .minimum_zig_version = "0.17.1",
     .fingerprint = 0x7c8c33c9edc51f3e,
     .paths = .{
         "build.zig",

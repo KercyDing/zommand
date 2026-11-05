@@ -1,7 +1,7 @@
 .{
     .name = .greeting,
     .version = "0.0.0",
-    .minimum_zig_version = "0.17.0",
+    .minimum_zig_version = "0.17.1",
     .fingerprint = 0x46e3a4ab46da7a15,
     .dependencies = .{
         .zommand = .{

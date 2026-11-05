@@ -65,7 +65,7 @@ pub fn createCli(
 }
 
 comptime {
-    const minimum_zig_version = "0.17.0";
+    const minimum_zig_version = "0.17.1";
     const minimum = std.SemanticVersion.parse(minimum_zig_version) catch unreachable;
 
     if (builtin.zig_version.order(minimum) == .lt) {
