@@ -592,7 +592,7 @@ test "program help" {
     const text = out.writer.buffered();
 
     try std.testing.expect(std.mem.startsWith(u8, text, "zommand 0.0.1\nBuild CLIs.\n"));
-    try std.testing.expect(std.mem.indexOf(u8, text, "fetch  Fetch a package.") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text, "  fetch            Fetch a package.") != null);
 }
 
 test "command help" {
@@ -623,10 +623,10 @@ test "command help" {
         text,
         "Usage: downloader download <url> [options]",
     ) != null);
-    try std.testing.expect(std.mem.indexOf(u8, text, "<url>  File URL") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text, "  <url>            File URL") != null);
     try std.testing.expect(std.mem.indexOf(
         u8,
         text,
-        "-p, --path <value>  Directory (default: .)",
+        "  -p, --path <value> Directory (default: .)",
     ) != null);
 }

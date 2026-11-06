@@ -2,6 +2,27 @@ const std = @import("std");
 const schema = @import("schema.zig");
 const output = @import("output.zig");
 
+/// Zig-style help column: two-space indent and a 16-character label field.
+const help_width = 16;
+
+fn writeHelpPrefix(writer: *std.Io.Writer, label: []const u8) std.Io.Writer.Error!void {
+    try writer.writeAll("  ");
+    try writer.writeAll(label);
+    var padding = if (label.len < help_width) help_width - label.len else 0;
+    while (padding > 0) : (padding -= 1) try writer.writeByte(' ');
+    try writer.writeByte(' ');
+}
+
+fn writeHelpRow(
+    writer: *std.Io.Writer,
+    label: []const u8,
+    help: []const u8,
+) std.Io.Writer.Error!void {
+    try writeHelpPrefix(writer, label);
+    try writer.writeAll(help);
+    try writer.writeByte('\n');
+}
+
 /// Writes program or command help to `writer`.
 pub fn writeHelp(
     comptime cli: schema.Cli,
@@ -58,11 +79,11 @@ fn writeProgram(comptime cli: schema.Cli, writer: *std.Io.Writer) std.Io.Writer.
 
     try writer.writeAll("\nCommands:\n");
     inline for (cli.commands) |command| {
-        try writer.print("  {s}  {s}\n", .{ command.name, command.about });
+        try writeHelpRow(writer, command.name, command.about);
     }
     try writer.writeAll("\nOptions:\n");
-    try writer.print("  {s:<14} {s}\n", .{ "-h, --help", "Print help" });
-    try writer.print("  {s:<14} {s}\n", .{ "-V, --version", "Print version" });
+    try writeHelpRow(writer, "-h, --help", "Print help");
+    try writeHelpRow(writer, "-V, --version", "Print version");
 }
 
 fn writeCommand(
@@ -103,7 +124,9 @@ fn writeCommand(
         inline for (command.args) |arg| {
             switch (arg) {
                 .positional => |positional| {
-                    try writer.print("  <{s}>  {s}\n", .{ positional.id, positional.help });
+                    var label_buffer: [128]u8 = undefined;
+                    const label = std.fmt.bufPrint(&label_buffer, "<{s}>", .{positional.id}) catch unreachable;
+                    try writeHelpRow(writer, label, positional.help);
                 },
                 else => {},
             }
@@ -115,14 +138,21 @@ fn writeCommand(
         inline for (command.args) |arg| {
             switch (arg) {
                 .flag => |flag| {
-                    try writer.writeAll("  ");
-                    if (flag.short) |short| try writer.print("-{s}, ", .{short});
-                    try writer.print("--{s}  {s}\n", .{ flag.id, flag.help });
+                    var label_buffer: [128]u8 = undefined;
+                    const label = if (flag.short) |short|
+                        std.fmt.bufPrint(&label_buffer, "-{s}, --{s}", .{ short, flag.id }) catch unreachable
+                    else
+                        std.fmt.bufPrint(&label_buffer, "--{s}", .{flag.id}) catch unreachable;
+                    try writeHelpRow(writer, label, flag.help);
                 },
                 .option => |option| {
-                    try writer.writeAll("  ");
-                    if (option.short) |short| try writer.print("-{s}, ", .{short});
-                    try writer.print("--{s} <value>  {s}", .{ option.id, option.help });
+                    var label_buffer: [128]u8 = undefined;
+                    const label = if (option.short) |short|
+                        std.fmt.bufPrint(&label_buffer, "-{s}, --{s} <value>", .{ short, option.id }) catch unreachable
+                    else
+                        std.fmt.bufPrint(&label_buffer, "--{s} <value>", .{option.id}) catch unreachable;
+                    try writeHelpPrefix(writer, label);
+                    try writer.writeAll(option.help);
                     if (option.required) try writer.writeAll(" (required)");
                     if (option.default) |default| try writer.print(" (default: {s})", .{default});
                     try writer.writeByte('\n');
