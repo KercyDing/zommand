@@ -172,7 +172,7 @@ fn writeCommand(
                 .positional => |positional| {
                     var label_buffer: [256]u8 = undefined;
                     const label = positionalLabel(arg, &label_buffer);
-                    try writeHelpRow(writer, label, positional.help orelse "", argument_width);
+                    try writeHelpRow(writer, label, positional.help, argument_width);
                 },
                 else => {},
             }
@@ -196,12 +196,12 @@ fn writeNamedRows(
             .flag => |flag| {
                 var label_buffer: [256]u8 = undefined;
                 const label = namedLabel(arg, &label_buffer);
-                try writeHelpRow(writer, label, flag.help orelse "", width);
+                try writeHelpRow(writer, label, flag.help, width);
             },
             .option => |option| {
                 var label_buffer: [256]u8 = undefined;
                 const label = namedLabel(arg, &label_buffer);
-                const help = option.help orelse "";
+                const help = option.help;
 
                 var extra_buffer: [256]u8 = undefined;
                 var extra_len: usize = 0;

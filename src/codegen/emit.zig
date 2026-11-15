@@ -131,7 +131,7 @@ fn writeCommand(
 ) !void {
     try writer.writeAll("        .{\n");
     try writeField(writer, 3, "name", command.name);
-    try writeOptionalField(writer, 3, "help", command.help);
+    try writeField(writer, 3, "help", command.help);
     try writeArgs(writer, 3, command.args);
     try writer.writeAll("        },\n");
 }
@@ -158,7 +158,7 @@ fn writeArg(writer: *std.Io.Writer, indent: usize, arg: schema.Arg) !void {
             try writer.writeAll(".positional = .{\n");
             try writeField(writer, indent + 2, "name", value.name);
             try writeOptionalField(writer, indent + 2, "placeholder", value.placeholder);
-            try writeOptionalField(writer, indent + 2, "help", value.help);
+            try writeField(writer, indent + 2, "help", value.help);
             try writeBoolField(writer, indent + 2, "required", value.required);
             try writeBoolField(writer, indent + 2, "multiple", value.multiple);
         },
@@ -167,7 +167,7 @@ fn writeArg(writer: *std.Io.Writer, indent: usize, arg: schema.Arg) !void {
             try writer.writeAll(".flag = .{\n");
             try writeField(writer, indent + 2, "name", value.name);
             try writeOptionalField(writer, indent + 2, "short", value.short);
-            try writeOptionalField(writer, indent + 2, "help", value.help);
+            try writeField(writer, indent + 2, "help", value.help);
         },
         .option => |value| {
             try writeIndent(writer, indent + 1);
@@ -175,7 +175,7 @@ fn writeArg(writer: *std.Io.Writer, indent: usize, arg: schema.Arg) !void {
             try writeField(writer, indent + 2, "name", value.name);
             try writeOptionalField(writer, indent + 2, "short", value.short);
             try writeOptionalField(writer, indent + 2, "placeholder", value.placeholder);
-            try writeOptionalField(writer, indent + 2, "help", value.help);
+            try writeField(writer, indent + 2, "help", value.help);
             try writeBoolField(writer, indent + 2, "required", value.required);
             try writeBoolField(writer, indent + 2, "multiple", value.multiple);
             try writeOptionalField(writer, indent + 2, "default", value.default);

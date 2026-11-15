@@ -529,15 +529,16 @@ test "parse supports equals, terminator, and clusters" {
         .name = "p",
         .version = "0.0.1",
         .args = &.{
-            .{ .flag = .{ .name = "verbose", .short = "v" } },
-            .{ .flag = .{ .name = "dry", .short = "d" } },
+            .{ .flag = .{ .name = "verbose", .short = "v", .help = "Verbose output" } },
+            .{ .flag = .{ .name = "dry", .short = "d", .help = "Dry run" } },
         },
         .commands = &.{.{
             .name = "run",
+            .help = "Run command",
             .args = &.{
-                .{ .positional = .{ .name = "target" } },
-                .{ .option = .{ .name = "name", .short = "n" } },
-                .{ .option = .{ .name = "include", .short = "i", .multiple = true } },
+                .{ .positional = .{ .name = "target", .help = "Target" } },
+                .{ .option = .{ .name = "name", .short = "n", .help = "Name" } },
+                .{ .option = .{ .name = "include", .short = "i", .help = "Include path", .multiple = true } },
             },
         }},
     }, Globals, Result);
@@ -567,8 +568,9 @@ test "parse supports attached short values and repeated options" {
         .version = "0.0.1",
         .commands = &.{.{
             .name = "run",
+            .help = "Run command",
             .args = &.{
-                .{ .option = .{ .name = "include", .short = "i", .multiple = true } },
+                .{ .option = .{ .name = "include", .short = "i", .help = "Include path", .multiple = true } },
             },
         }},
     }, Globals, Result);
@@ -596,12 +598,13 @@ test "program arguments work before and after the command" {
         .name = "p",
         .version = "0.0.1",
         .args = &.{
-            .{ .flag = .{ .name = "verbose", .short = "v" } },
+            .{ .flag = .{ .name = "verbose", .short = "v", .help = "Verbose output" } },
         },
         .commands = &.{.{
             .name = "run",
+            .help = "Run command",
             .args = &.{.{
-                .positional = .{ .name = "target" },
+                .positional = .{ .name = "target", .help = "Target" },
             }},
         }},
     }, Globals, Result);
@@ -640,8 +643,9 @@ test "repeated non-multiple arguments are rejected" {
         .version = "0.0.1",
         .commands = &.{.{
             .name = "run",
+            .help = "Run command",
             .args = &.{.{
-                .option = .{ .name = "name", .short = "n" },
+                .option = .{ .name = "name", .short = "n", .help = "Name" },
             }},
         }},
     }, Globals, Result);
@@ -662,7 +666,8 @@ test "help and version requests" {
 
     const command: schema.Command = .{
         .name = "run",
-        .args = &.{.{ .positional = .{ .name = "target" } }},
+        .help = "Run command",
+        .args = &.{.{ .positional = .{ .name = "target", .help = "Target" } }},
     };
     const Cli = Generate(.{
         .name = "p",
@@ -690,9 +695,10 @@ test "help used as an option value is not a request" {
         .version = "0.0.1",
         .commands = &.{.{
             .name = "run",
+            .help = "Run command",
             .args = &.{
-                .{ .positional = .{ .name = "target" } },
-                .{ .option = .{ .name = "name", .short = "n" } },
+                .{ .positional = .{ .name = "target", .help = "Target" } },
+                .{ .option = .{ .name = "name", .short = "n", .help = "Name" } },
             },
         }},
     }, Globals, Result);
@@ -725,8 +731,9 @@ test "command named program accepts positionals" {
         .name = "p",
         .commands = &.{.{
             .name = "program",
+            .help = "Program command",
             .args = &.{.{
-                .positional = .{ .name = "value", .required = true },
+                .positional = .{ .name = "value", .help = "Value", .required = true },
             }},
         }},
     }, Globals, Result);
@@ -753,8 +760,9 @@ test "kebab-case names derive fields" {
         .version = "0.0.1",
         .commands = &.{.{
             .name = "new-project",
+            .help = "Create a project",
             .args = &.{.{
-                .flag = .{ .name = "dry-run" },
+                .flag = .{ .name = "dry-run", .help = "Dry run" },
             }},
         }},
     }, Globals, Result);
@@ -773,7 +781,7 @@ test "kebab-case names derive fields" {
 test "version defaults to 0.0.1" {
     const cli: schema.Cli = .{
         .name = "p",
-        .commands = &.{.{ .name = "run" }},
+        .commands = &.{.{ .name = "run", .help = "Run command" }},
     };
 
     try std.testing.expectEqualStrings("0.0.1", cli.version);
@@ -848,7 +856,7 @@ test "program help starts with usage without help" {
     const cli: schema.Cli = .{
         .name = "p",
         .version = "0.0.1",
-        .commands = &.{.{ .name = "run" }},
+        .commands = &.{.{ .name = "run", .help = "Run command" }},
     };
 
     var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
