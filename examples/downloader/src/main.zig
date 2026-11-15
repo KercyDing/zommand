@@ -8,16 +8,25 @@ pub fn main(init: std.process.Init) !void {
     const arena = init.arena.allocator();
     const args = init.minimal.args;
 
-    const result = try cli.parse(io, arena, args);
+    const parsed = cli.parseOrExit(io, arena, args);
 
-    switch (result) {
-        .download => |download| try runDownload(init, arena, download),
+    switch (parsed.command) {
+        .download => |download| try runDownload(init, arena, parsed.globals.verbose, download),
     }
 }
 
-fn runDownload(init: std.process.Init, arena: std.mem.Allocator, download: Download) !void {
+fn runDownload(
+    init: std.process.Init,
+    arena: std.mem.Allocator,
+    verbose: bool,
+    download: Download,
+) !void {
     const io = init.io;
     const name = fileNameFromUrl(download.url);
+
+    if (verbose) {
+        std.debug.print("Downloading {s} to {s}/{s}\n", .{ download.url, download.path, name });
+    }
 
     var dir = try std.Io.Dir.createDirPathOpen(std.Io.Dir.cwd(), io, download.path, .{});
     defer dir.close(io);
@@ -53,6 +62,7 @@ fn runDownload(init: std.process.Init, arena: std.mem.Allocator, download: Downl
     }
 
     keep = true;
+    if (verbose) std.debug.print("HTTP {d}\n", .{status});
     std.debug.print("Downloaded {s}\n", .{name});
 }
 

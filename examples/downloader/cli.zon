@@ -1,6 +1,17 @@
 .{
     .name = "downloader",
     .version = "0.0.1",
+    .help = "Download files from URLs.",
+    .args = .{
+        .{
+            .flag = .{
+                .name = "verbose",
+                .short = "v",
+                .help = "Verbose output",
+                .multiple = false,
+            },
+        },
+    },
     .commands = .{
         .{
             .name = "download",
