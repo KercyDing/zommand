@@ -17,6 +17,7 @@ pub fn Generate(
     comptime GlobalsType: type,
     comptime ResultType: type,
 ) type {
+    @setEvalBranchQuota(comptime schema.evalBranchQuota(cli));
     validateSchema(cli);
     validateGlobals(cli, GlobalsType);
     validateResult(cli, ResultType);
@@ -43,6 +44,7 @@ pub fn Generate(
             arena: std.mem.Allocator,
             args: std.process.Args,
         ) Parsed {
+            @setEvalBranchQuota(comptime schema.evalBranchQuota(cli));
             var failure: parser.Failure = .{};
             const slice = args.toSlice(arena) catch |err| switch (err) {
                 error.OutOfMemory => {
@@ -88,12 +90,14 @@ pub fn Generate(
             arena: std.mem.Allocator,
             argv: []const [:0]const u8,
         ) ParseError!Outcome {
+            @setEvalBranchQuota(comptime schema.evalBranchQuota(cli));
             var failure: parser.Failure = .{};
             return parser.parse(cli, Globals, Result, arena, argv, &failure);
         }
 
         /// Releases slices allocated for repeated positional arguments and options.
         pub fn deinit(parsed: *Parsed, allocator: std.mem.Allocator) void {
+            @setEvalBranchQuota(comptime schema.evalBranchQuota(cli));
             parser.deinit(cli, Globals, Result, parsed, allocator);
         }
 
@@ -242,20 +246,23 @@ fn validateSchema(comptime cli: schema.Cli) void {
 
     validateArgs(cli.args, "program", true);
 
+    comptime var command_ids: [cli.commands.len][]const u8 = undefined;
     inline for (cli.commands, 0..) |command, index| {
+        const command_id = schema.commandId(command);
+        command_ids[index] = command_id;
         validateCommand(command);
 
-        inline for (cli.commands[0..index]) |previous| {
+        inline for (cli.commands[0..index], 0..) |previous, previous_index| {
             if (std.mem.eql(u8, command.name, previous.name)) {
                 @compileError(std.fmt.comptimePrint(
                     "duplicate command name '{s}'",
                     .{command.name},
                 ));
             }
-            if (std.mem.eql(u8, schema.commandId(command), schema.commandId(previous))) {
+            if (std.mem.eql(u8, command_id, command_ids[previous_index])) {
                 @compileError(std.fmt.comptimePrint(
                     "commands '{s}' and '{s}' derive the same field '{s}'",
-                    .{ previous.name, command.name, schema.commandId(command) },
+                    .{ previous.name, command.name, command_id },
                 ));
             }
         }
@@ -300,7 +307,6 @@ fn validateCommand(comptime command: schema.Command) void {
             .{command.name},
         ));
     }
-    _ = schema.commandId(command);
     validateArgs(command.args, command.name, false);
 }
 
@@ -311,9 +317,11 @@ fn validateArgs(
 ) void {
     var multiple_positional = false;
     var optional_positional = false;
+    comptime var ids: [args.len][]const u8 = undefined;
 
     inline for (args, 0..) |arg, index| {
-        _ = schema.argId(arg);
+        const id = schema.argId(arg);
+        ids[index] = id;
         const help = switch (arg) {
             .positional => |value| value.help,
             .flag => |value| value.help,
@@ -370,11 +378,11 @@ fn validateArgs(
             },
         }
 
-        inline for (args[0..index]) |previous| {
-            if (std.mem.eql(u8, schema.argId(arg), schema.argId(previous))) {
+        inline for (args[0..index], 0..) |previous, previous_index| {
+            if (std.mem.eql(u8, id, ids[previous_index])) {
                 @compileError(std.fmt.comptimePrint(
                     "arguments '{s}' and '{s}' both derive field '{s}' in '{s}'",
-                    .{ schema.argName(previous), schema.argName(arg), schema.argId(arg), owner },
+                    .{ schema.argName(previous), schema.argName(arg), id, owner },
                 ));
             }
 
@@ -965,4 +973,63 @@ test "command help" {
         text,
         "  -h, --help       Print help",
     ) != null);
+}
+
+test "large schema parses within quota" {
+    const args: []const schema.Arg = &.{
+        .{ .positional = .{ .name = "path", .help = "Path", .required = true } },
+        .{ .flag = .{ .name = "flag0", .help = "Flag 0" } },
+        .{ .flag = .{ .name = "flag1", .help = "Flag 1" } },
+        .{ .flag = .{ .name = "flag2", .help = "Flag 2" } },
+        .{ .flag = .{ .name = "flag3", .help = "Flag 3" } },
+        .{ .flag = .{ .name = "flag4", .help = "Flag 4" } },
+        .{ .flag = .{ .name = "flag5", .help = "Flag 5" } },
+        .{ .flag = .{ .name = "flag6", .help = "Flag 6" } },
+        .{ .flag = .{ .name = "flag7", .help = "Flag 7" } },
+        .{ .flag = .{ .name = "flag8", .help = "Flag 8" } },
+        .{ .flag = .{ .name = "flag9", .help = "Flag 9" } },
+    };
+    const Payload = struct {
+        path: []const u8,
+        flag0: bool,
+        flag1: bool,
+        flag2: bool,
+        flag3: bool,
+        flag4: bool,
+        flag5: bool,
+        flag6: bool,
+        flag7: bool,
+        flag8: bool,
+        flag9: bool,
+    };
+    const Result = union(enum) {
+        a: Payload,
+        b: Payload,
+        c: Payload,
+        d: Payload,
+        e: Payload,
+    };
+    const Cli = Generate(.{
+        .name = "big",
+        .version = "0.0.1",
+        .commands = &.{
+            .{ .name = "a", .help = "A", .args = args },
+            .{ .name = "b", .help = "B", .args = args },
+            .{ .name = "c", .help = "C", .args = args },
+            .{ .name = "d", .help = "D", .args = args },
+            .{ .name = "e", .help = "E", .args = args },
+        },
+    }, struct {}, Result);
+
+    const argv = [_][:0]const u8{ "big", "a", "input.txt", "--flag0" };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const parsed = switch (try Cli.parseArgs(arena.allocator(), &argv)) {
+        .parsed => |value| value,
+        else => return error.UnexpectedOutcome,
+    };
+    try std.testing.expectEqualStrings("input.txt", parsed.command.a.path);
+    try std.testing.expect(parsed.command.a.flag0);
+    try std.testing.expect(!parsed.command.a.flag1);
 }

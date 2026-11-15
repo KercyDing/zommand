@@ -84,6 +84,7 @@ pub fn writeHelp(
     comptime command: ?schema.Command,
     writer: *std.Io.Writer,
 ) std.Io.Writer.Error!void {
+    @setEvalBranchQuota(comptime schema.evalBranchQuota(cli));
     if (command) |cmd| {
         try writeCommand(cli, writer, cmd);
     } else {

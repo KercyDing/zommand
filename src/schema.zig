@@ -21,6 +21,15 @@ pub const Cli = struct {
     commands: []const Command = &.{},
 };
 
+/// Returns a compile-time branch quota based on schema size.
+pub fn evalBranchQuota(comptime cli: Cli) u32 {
+    var count: u32 = @intCast(cli.args.len + cli.commands.len);
+    for (cli.commands) |command| {
+        count += @intCast(command.args.len);
+    }
+    return 100_000 + count * 1_000;
+}
+
 pub const Command = struct {
     /// Command name shown on the command line, for example: "new-project".
     /// `-` is converted to `_` for the generated Zig field and type name.
@@ -135,13 +144,11 @@ pub fn deriveId(name: []const u8, buffer: []u8) ?[]const u8 {
 }
 
 fn derivedId(comptime name: []const u8) []const u8 {
-    @setEvalBranchQuota(100_000);
     comptime var buffer: [name.len]u8 = undefined;
-    const result = deriveId(name, &buffer) orelse {
+    return deriveId(name, &buffer) orelse {
         @compileError(std.fmt.comptimePrint(
             "name '{s}' is invalid: it must convert to a Zig identifier",
             .{name},
         ));
     };
-    return std.fmt.comptimePrint("{s}", .{result});
 }
