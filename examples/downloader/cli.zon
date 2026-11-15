@@ -8,7 +8,6 @@
                 .name = "verbose",
                 .short = "v",
                 .help = "Verbose output",
-                .multiple = false,
             },
         },
     },
