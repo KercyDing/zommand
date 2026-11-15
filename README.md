@@ -134,14 +134,26 @@ Complete projects live in [`examples`](examples):
 - [`greeting`](examples/greeting): minimal schema, one command, one option
 - [`downloader`](examples/downloader): every optional field written out
 
-```bash
-only build-examples
+### Greeting
 
-./examples/greeting/zig-out/bin/greeting print --name xxx
-./examples/downloader/zig-out/bin/downloader --verbose download https://ziglang.org/download/index.json --path ./.zig-cache/tmp
+```bash
+cd examples/greeting
+zig build -Doptimize=safe -Dstrip=true
+./zig-out/bin/greeting print --name xxx
+```
+
+### Downloader
+
+```bash
+cd examples/downloader
+zig build -Doptimize=safe -Dstrip=true
+./zig-out/bin/downloader --verbose download https://ziglang.org/download/index.json --path ./.zig-cache/tmp
 ```
 
 ## Development
+
+Tasks live in [Onlyfile](Onlyfile) and run with
+[only](https://github.com/KercyDing/only).
 
 ```bash
 only build       # build zommand

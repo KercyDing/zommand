@@ -6,16 +6,6 @@
 build():
     zig build
 
-[help] Build all examples
-[pass] Build complete.
-[fail] Build failed.
-build-examples():
-    | cd examples/greeting
-    | zig build -Doptimize=safe -Dstrip=true
-
-    | cd examples/downloader
-    | zig build -Doptimize=safe -Dstrip=true
-
 [help] Run all tests
 [pass] Tests passed.
 [fail] Tests failed.
