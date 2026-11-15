@@ -1,0 +1,9 @@
+.{
+    .name = "",
+    .commands = .{
+        .{
+            .name = "run",
+            .help = "Run the fixture",
+        },
+    },
+}

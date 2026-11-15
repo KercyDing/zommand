@@ -37,6 +37,20 @@ pub fn build(b: *std.Build) void {
 
     const test_step = b.step("test", "Run zommand tests");
     test_step.dependOn(&b.addRunArtifact(lib_tests).step);
+    test_step.dependOn(&codegen.step);
+
+    const invalid_fixtures = .{
+        "test/invalid/empty-name.zon",
+        "test/invalid/missing-help.zon",
+    };
+
+    inline for (invalid_fixtures) |fixture| {
+        const invalid = b.addRunArtifact(codegen);
+        invalid.addFileArg(b.path(fixture));
+        _ = invalid.addOutputFileArg("cli.zig");
+        invalid.expectExitCode(1);
+        test_step.dependOn(&invalid.step);
+    }
 }
 
 /// Creates a module from a `.zon` CLI schema.
