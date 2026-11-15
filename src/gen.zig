@@ -126,8 +126,8 @@ pub fn Generate(
         }
 
         fn writeDiagnostic(io: std.Io, err: ParseError, failure: *const parser.Failure) void {
-            var message_buffer: [256]u8 = undefined;
-            var label_buffer: [256]u8 = undefined;
+            var message_buffer: [1024]u8 = undefined;
+            var label_buffer: [1024]u8 = undefined;
             const body = diagnosticBody(err, failure, &message_buffer, &label_buffer);
 
             switch (err) {
@@ -230,6 +230,12 @@ fn diagnosticBody(
 }
 
 fn validateSchema(comptime cli: schema.Cli) void {
+    if (!schema.isValidName(cli.name)) {
+        @compileError(std.fmt.comptimePrint(
+            "invalid program name '{s}'",
+            .{cli.name},
+        ));
+    }
     if (cli.commands.len == 0) {
         @compileError("CLI must contain at least one command");
     }

@@ -282,6 +282,10 @@ fn validateCli(allocator: std.mem.Allocator, cli: schema.Cli) !void {
         return error.InvalidSchema;
     };
 
+    if (!schema.isValidName(cli.name)) {
+        std.log.err("invalid program name '{s}'", .{cli.name});
+        return error.InvalidSchema;
+    }
     if (cli.commands.len == 0) {
         std.log.err("CLI must contain at least one command", .{});
         return error.InvalidSchema;
