@@ -4,11 +4,8 @@ const cli = @import("cli");
 const Download = cli.Download;
 
 pub fn main(init: std.process.Init) !void {
-    const io = init.io;
     const arena = init.arena.allocator();
-    const args = init.minimal.args;
-
-    const parsed = cli.parseOrExit(io, arena, args);
+    const parsed = cli.parseOrExit(init);
 
     switch (parsed.command) {
         .download => |download| try runDownload(init, arena, parsed.globals.verbose, download),

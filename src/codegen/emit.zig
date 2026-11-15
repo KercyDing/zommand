@@ -57,12 +57,8 @@ pub fn emit(allocator: std.mem.Allocator, cli: schema.Cli, writer: *std.Io.Write
         \\// =============== Parsing ===============
         \\/// Parses process arguments, exiting with code 2 on usage errors and
         \\/// code 1 when the arguments cannot be read.
-        \\pub fn parseOrExit(
-        \\    io: std.Io,
-        \\    arena: std.mem.Allocator,
-        \\    args: std.process.Args,
-        \\) Parsed {
-        \\    return Parser.parseOrExit(io, arena, args);
+        \\pub fn parseOrExit(init: std.process.Init) Parsed {
+        \\    return Parser.parseOrExit(init);
         \\}
         \\
         \\/// Parses an explicit argument slice, including the program name at

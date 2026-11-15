@@ -32,10 +32,13 @@ pub fn Generate(
         /// show help/version.
         pub const Outcome = parser.OutcomeType(Globals, Result);
 
-        /// Parses process arguments, printing help/version or diagnostics and
-        /// exiting. Usage errors exit with code 2; argument read errors exit
-        /// with code 1.
-        pub fn parseOrExit(
+        /// Parses process arguments from `std.process.Init`, printing
+        /// help/version or diagnostics and exiting when needed.
+        pub fn parseOrExit(init: std.process.Init) Parsed {
+            return parseOrExitArgs(init.io, init.arena.allocator(), init.minimal.args);
+        }
+
+        fn parseOrExitArgs(
             io: std.Io,
             arena: std.mem.Allocator,
             args: std.process.Args,

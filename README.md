@@ -54,16 +54,15 @@ const exe_mod = b.createModule(.{
 Parse in the application:
 
 ```zig
+const std = @import("std");
 const cli = @import("cli");
 
-const parsed = cli.parseOrExit(
-    init.io,
-    init.arena.allocator(),
-    init.minimal.args,
-);
+pub fn main(init: std.process.Init) !void {
+    const parsed = cli.parseOrExit(init);
 
-switch (parsed.command) {
-    .print => |print| std.debug.print("hello, {s}!\n", .{print.name orelse "world"}),
+    switch (parsed.command) {
+        .print => |print| std.debug.print("hello, {s}!\n", .{print.name orelse "world"}),
+    }
 }
 ```
 
