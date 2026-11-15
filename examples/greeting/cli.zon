@@ -1,6 +1,5 @@
 .{
     .name = "greeting",
-    .version = "0.0.1",
     .commands = .{
         .{
             .name = "print",
@@ -8,7 +7,6 @@
                 .{
                     .option = .{
                         .name = "name",
-                        .default = "world",
                     },
                 },
             },

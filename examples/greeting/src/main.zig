@@ -6,9 +6,9 @@ pub fn main(init: std.process.Init) !void {
     const arena = init.arena.allocator();
     const args = init.minimal.args;
 
-    const result = try cli.parse(io, arena, args);
+    const parsed = cli.parseOrExit(io, arena, args);
 
-    switch (result) {
+    switch (parsed.command) {
         .print => |print| std.debug.print("hello, {s}!\n", .{print.name orelse "world"}),
     }
 }
