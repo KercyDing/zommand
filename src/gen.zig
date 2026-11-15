@@ -214,6 +214,10 @@ fn argLabel(arg: schema.Arg, buffer: []u8) []const u8 {
 }
 
 fn validateSchema(comptime cli: schema.Cli) void {
+    if (cli.commands.len == 0) {
+        @compileError("CLI must contain at least one command");
+    }
+
     validateArgs(cli.args, "program");
 
     inline for (cli.commands, 0..) |command, index| {

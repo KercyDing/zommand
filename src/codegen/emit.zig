@@ -114,6 +114,11 @@ fn writeGlobals(
     writer: *std.Io.Writer,
     cli: schema.Cli,
 ) !void {
+    if (cli.args.len == 0) {
+        try writer.writeAll("/// Program-level argument values.\npub const Globals = struct {};\n\n");
+        return;
+    }
+
     try writer.writeAll("/// Program-level argument values.\npub const Globals = struct {\n");
     for (cli.args) |arg| {
         try writer.print("    {f}: {s},\n", .{
@@ -130,8 +135,17 @@ fn writeCommandType(
     command: schema.Command,
 ) !void {
     const id = try resolveId(allocator, command.name);
+    const type_name = try typeName(allocator, id);
+
+    if (command.args.len == 0) {
+        try writer.print("pub const {f} = struct {{}};\n\n", .{
+            std.zig.fmtId(type_name),
+        });
+        return;
+    }
+
     try writer.print("pub const {f} = struct {{\n", .{
-        std.zig.fmtId(try typeName(allocator, id)),
+        std.zig.fmtId(type_name),
     });
     for (command.args) |arg| {
         try writer.print("    {f}: {s},\n", .{
@@ -299,6 +313,11 @@ fn validateCli(allocator: std.mem.Allocator, cli: schema.Cli) !void {
         std.log.err("version '{s}' is not a valid semantic version", .{cli.version});
         return error.InvalidSchema;
     };
+
+    if (cli.commands.len == 0) {
+        std.log.err("CLI must contain at least one command", .{});
+        return error.InvalidSchema;
+    }
 
     try validateArgs(allocator, cli.args, "program", true);
 
