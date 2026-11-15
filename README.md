@@ -15,17 +15,13 @@ Declare the schema in ZON:
 ```zig
 .{
     .name = "greeting",
-    .version = "0.0.1",
     .commands = .{
         .{
             .name = "print",
-            .about = "Print hello world",
             .args = .{
                 .{
                     .option = .{
-                        .id = "name",
-                        .help = "Name to greet",
-                        .default = "world",
+                        .name = "name",
                     },
                 },
             },
@@ -55,19 +51,19 @@ const exe_mod = b.createModule(.{
 });
 ```
 
-The generated module has explicit command types and `parse`:
+Parse in the application:
 
 ```zig
 const cli = @import("cli");
 
-const io = init.io;
-const arena = init.arena.allocator();
-const args = init.minimal.args;
+const parsed = cli.parseOrExit(
+    init.io,
+    init.arena.allocator(),
+    init.minimal.args,
+);
 
-const result = try cli.parse(io, arena, args);
-
-switch (result) {
-    .print => |print| std.debug.print("hello, {s}!\n", .{print.name}),
+switch (parsed.command) {
+    .print => |print| std.debug.print("hello, {s}!\n", .{print.name orelse "world"}),
 }
 ```
 
@@ -80,14 +76,15 @@ See [`src/schema.zig`](src/schema.zig) for all fields.
 
 Complete projects live in [`examples`](examples):
 
-- [`greeting`](examples/greeting): one command, one option
 - [`downloader`](examples/downloader): stream a URL into a directory
+- [`greeting`](examples/greeting): minimal schema, one command, one option
+- [`downloader`](examples/downloader): every optional field written out
 
 ```bash
 only build-examples
 
 ./examples/greeting/zig-out/bin/greeting print --name xxx
-./examples/downloader/zig-out/bin/downloader download https://ziglang.org/download/index.json --path ./.zig-cache/tmp
+./examples/downloader/zig-out/bin/downloader --verbose download https://ziglang.org/download/index.json --path ./.zig-cache/tmp
 ```
 
 ## Development

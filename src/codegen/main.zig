@@ -23,7 +23,7 @@ pub fn main(init: std.process.Init) !void {
     const source = try allocator.dupeSentinel(u8, source_bytes, 0);
 
     var diagnostics: std.zon.parse.Diagnostics = undefined;
-    const cli = std.zon.parse.fromSlice(schema.InputCli, .{
+    const cli = std.zon.parse.fromSlice(schema.Cli, .{
         .gpa = std.heap.page_allocator,
         .arena = allocator,
         .source = source,
@@ -37,7 +37,10 @@ pub fn main(init: std.process.Init) !void {
     };
 
     var output: std.Io.Writer.Allocating = .init(allocator);
-    try emit.emit(allocator, cli, &output.writer);
+    emit.emit(allocator, cli, &output.writer) catch |err| switch (err) {
+        error.InvalidSchema => std.process.exit(1),
+        else => return err,
+    };
 
     try std.Io.Dir.cwd().writeFile(init.io, .{
         .sub_path = args[2],

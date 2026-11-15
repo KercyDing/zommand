@@ -4,12 +4,10 @@
     .commands = .{
         .{
             .name = "print",
-            .about = "Print hello world",
             .args = .{
                 .{
                     .option = .{
-                        .id = "name",
-                        .help = "Name to greet",
+                        .name = "name",
                         .default = "world",
                     },
                 },

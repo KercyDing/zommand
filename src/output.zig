@@ -16,6 +16,20 @@ pub fn write(
     file_writer.interface.flush() catch {};
 }
 
+/// Prints a usage error to stderr using the same "error: " formatting (and
+/// terminal colors) as `std.log`; ignores write errors.
+pub fn printError(
+    io: std.Io,
+    comptime format: []const u8,
+    args: anytype,
+) void {
+    var buffer: [4096]u8 = undefined;
+    const locked = io.lockStderr(&buffer, null) catch return;
+    defer io.unlockStderr();
+    const terminal = locked.terminal();
+    std.log.defaultLogFileTerminal(.err, .default, format, args, terminal) catch {};
+}
+
 /// Prints formatted output through a buffered file writer and flushes it.
 pub fn print(
     io: std.Io,

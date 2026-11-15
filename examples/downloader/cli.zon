@@ -4,20 +4,25 @@
     .commands = .{
         .{
             .name = "download",
-            .about = "Download a file",
+            .help = "Download a file",
             .args = .{
                 .{
                     .positional = .{
-                        .id = "url",
+                        .name = "url",
+                        .placeholder = "URL",
                         .help = "File URL",
                         .required = true,
+                        .multiple = false,
                     },
                 },
                 .{
                     .option = .{
-                        .id = "path",
+                        .name = "path",
                         .short = "p",
+                        .placeholder = "dir",
                         .help = "Directory to save the file",
+                        .required = false,
+                        .multiple = false,
                         .default = ".",
                     },
                 },

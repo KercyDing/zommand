@@ -1,133 +1,449 @@
 const std = @import("std");
-const schema = @import("schema.zig");
-const output = @import("output.zig");
 const builtin = @import("builtin.zig");
-
-const ARG_COUNT_MAX = 64;
+const output = @import("output.zig");
+const parser = @import("parse.zig");
+const schema = @import("schema.zig");
 
 /// Errors returned when parsing process arguments fails.
-pub const ParseError = error{
-    OutOfMemory,
-    ArgumentsUnavailable,
-    CommandNotFound,
-    ArgumentNotFound,
-    MissingRequiredArgument,
-    MissingOptionValue,
-    TooManyArguments,
-};
+pub const ParseError = parser.ParseError;
 
-/// Generates a typed parser for a CLI schema and application result union.
+/// Errors returned when writing help for an unknown command.
+pub const HelpError = error{UnknownCommand} || std.Io.Writer.Error;
+
+/// Generates a typed parser for a CLI schema, its program-level arguments, and
+/// the application result union.
 ///
-/// The result union must contain one field for each command in `cli`.
-pub fn Generate(comptime cli: schema.Cli, comptime ResultType: type) type {
+/// `GlobalsType` must contain one field for each program-level argument.
+/// `ResultType` must contain one field for each command.
+pub fn Generate(
+    comptime cli: schema.Cli,
+    comptime GlobalsType: type,
+    comptime ResultType: type,
+) type {
+    validateSchema(cli);
+    validateGlobals(cli, GlobalsType);
     validateResult(cli, ResultType);
 
     return struct {
+        /// Program-level argument values.
+        pub const Globals = GlobalsType;
         /// The application result union returned by `parse`.
         pub const Result = ResultType;
+        /// Result of a successful parse.
+        pub const Parsed = parser.ParsedType(Globals, Result);
+        /// Result of parsing a slice: either parsed values, or a request to
+        /// show help/version.
+        pub const Outcome = parser.OutcomeType(Globals, Result);
 
         /// Returns the program name declared in the CLI schema.
         pub fn programName() []const u8 {
             return cli.name;
         }
 
-        /// Parses process arguments. `arena` owns converted argument strings
-        /// referenced by the returned result.
-        pub fn parse(
+        /// Returns the configured program version.
+        pub fn version() []const u8 {
+            return cli.version;
+        }
+
+        /// Parses process arguments, printing help/version or diagnostics and
+        /// exiting. Usage errors exit with code 2; argument read errors exit
+        /// with code 1.
+        pub fn parseOrExit(
             io: std.Io,
             arena: std.mem.Allocator,
             args: std.process.Args,
-        ) ParseError!Result {
+        ) Parsed {
+            var failure: parser.Failure = .{};
             const slice = args.toSlice(arena) catch |err| switch (err) {
-                error.OutOfMemory => return ParseError.OutOfMemory,
-                else => return ParseError.ArgumentsUnavailable,
-            };
-
-            var help_requested = false;
-            var version_requested = false;
-            for (slice[1..]) |arg| {
-                if (std.mem.eql(u8, arg, "--help") or std.mem.eql(u8, arg, "-h")) {
-                    help_requested = true;
-                    break;
-                }
-                if (std.mem.eql(u8, arg, "--version") or std.mem.eql(u8, arg, "-V")) {
-                    version_requested = true;
-                }
-            }
-            if (help_requested) {
-                if (slice.len >= 2) {
-                    inline for (cli.commands) |command| {
-                        if (std.mem.eql(u8, slice[1], command.name)) {
-                            builtin.showHelp(io, cli, command);
-                        }
-                    }
-                }
-                builtin.showHelp(io, cli, null);
-            }
-            if (version_requested) {
-                builtin.showVersion(io, cli);
-            }
-
-            return parseSlice(arena, slice) catch |err| switch (err) {
-                error.CommandNotFound => {
-                    output.print(io, .stderr, "Try '{s} --help' for more information.\n", .{cli.name});
-                    return err;
+                error.OutOfMemory => {
+                    writeDiagnostic(io, ParseError.OutOfMemory, &failure);
+                    std.process.exit(1);
                 },
-                else => return err,
+                else => {
+                    writeDiagnostic(io, ParseError.ArgumentsUnavailable, &failure);
+                    std.process.exit(1);
+                },
             };
+
+            const outcome = parser.parse(
+                cli,
+                Globals,
+                Result,
+                arena,
+                slice,
+                &failure,
+            ) catch |err| {
+                writeDiagnostic(io, err, &failure);
+                std.process.exit(switch (err) {
+                    error.OutOfMemory, error.ArgumentsUnavailable => 1,
+                    else => 2,
+                });
+            };
+
+            switch (outcome) {
+                .parsed => |parsed| return parsed,
+                .help => |command| showHelp(io, command),
+                .version => builtin.showVersion(io, cli),
+            }
+        }
+
+        /// Parses an explicit argument slice, including the program name at
+        /// index 0. Does not print diagnostics or exit.
+        pub fn parseArgs(
+            arena: std.mem.Allocator,
+            argv: []const [:0]const u8,
+        ) ParseError!Outcome {
+            var failure: parser.Failure = .{};
+            return parser.parse(cli, Globals, Result, arena, argv, &failure);
         }
 
         /// Writes program help or command help to `writer`.
         pub fn writeHelp(
             writer: *std.Io.Writer,
-            comptime command: ?schema.Command,
-        ) std.Io.Writer.Error!void {
-            return builtin.writeHelp(cli, command, writer);
+            command_name: ?[]const u8,
+        ) HelpError!void {
+            if (command_name) |name| {
+                inline for (cli.commands) |command| {
+                    if (std.mem.eql(u8, command.name, name)) {
+                        return builtin.writeHelp(cli, command, writer);
+                    }
+                }
+                return error.UnknownCommand;
+            }
+            return builtin.writeHelp(cli, null, writer);
         }
+
         /// Writes the configured program version to `writer`.
         pub fn writeVersion(writer: *std.Io.Writer) std.Io.Writer.Error!void {
             return builtin.writeVersion(cli, writer);
         }
-        fn parseSlice(
-            allocator: std.mem.Allocator,
-            args: []const [:0]const u8,
-        ) ParseError!Result {
-            if (args.len <= 1) return ParseError.CommandNotFound;
-
-            inline for (cli.commands) |command| {
-                if (std.mem.eql(u8, args[1], command.name)) {
-                    const value = try parseCommand(
-                        command,
-                        @FieldType(ResultType, command.name),
-                        allocator,
-                        args[2..],
-                    );
-                    return @unionInit(ResultType, command.name, value);
-                }
-            }
-
-            return ParseError.CommandNotFound;
-        }
 
         /// Releases slices allocated for repeated positional arguments and options.
-        pub fn deinit(result: *Result, allocator: std.mem.Allocator) void {
-            const tag = std.meta.activeTag(result.*);
-            inline for (cli.commands) |command| {
-                if (tag == @field(@TypeOf(tag), command.name)) {
-                    freeCommandSlices(command, allocator, &@field(result.*, command.name));
-                    return;
+        pub fn deinit(parsed: *Parsed, allocator: std.mem.Allocator) void {
+            parser.deinit(cli, Globals, Result, parsed, allocator);
+        }
+
+        fn showHelp(io: std.Io, command: ?schema.Command) noreturn {
+            if (command) |target| {
+                inline for (cli.commands) |candidate| {
+                    if (std.mem.eql(u8, candidate.name, target.name)) {
+                        builtin.showHelp(io, cli, candidate);
+                    }
                 }
             }
-            unreachable;
+            builtin.showHelp(io, cli, null);
+        }
+
+        fn writeDiagnostic(io: std.Io, err: ParseError, failure: *const parser.Failure) void {
+            var message_buffer: [256]u8 = undefined;
+            var label_buffer: [256]u8 = undefined;
+
+            const body = switch (err) {
+                error.OutOfMemory => "out of memory",
+                error.ArgumentsUnavailable => "unable to read command-line arguments",
+                error.MissingCommand => "a command is required",
+                error.UnknownCommand => std.fmt.bufPrint(
+                    &message_buffer,
+                    "unknown command '{s}'",
+                    .{failure.token orelse ""},
+                ) catch "unknown command",
+                error.UnknownArgument => std.fmt.bufPrint(
+                    &message_buffer,
+                    "unknown argument '{s}'",
+                    .{failure.token orelse ""},
+                ) catch "unknown argument",
+                error.UnexpectedArgument => std.fmt.bufPrint(
+                    &message_buffer,
+                    "unexpected argument '{s}'",
+                    .{failure.token orelse ""},
+                ) catch "unexpected argument",
+                error.MissingRequiredArgument => std.fmt.bufPrint(
+                    &message_buffer,
+                    "missing required argument '{s}'",
+                    .{argLabel(failure.arg.?, &label_buffer)},
+                ) catch "missing required argument",
+                error.MissingOptionValue => std.fmt.bufPrint(
+                    &message_buffer,
+                    "argument '{s}' requires a value",
+                    .{argLabel(failure.arg.?, &label_buffer)},
+                ) catch "missing option value",
+                error.UnexpectedValue => std.fmt.bufPrint(
+                    &message_buffer,
+                    "argument '{s}' does not take a value",
+                    .{argLabel(failure.arg.?, &label_buffer)},
+                ) catch "unexpected value",
+                error.DuplicateArgument => std.fmt.bufPrint(
+                    &message_buffer,
+                    "argument '{s}' cannot be used multiple times",
+                    .{argLabel(failure.arg.?, &label_buffer)},
+                ) catch "duplicate argument",
+            };
+
+            switch (err) {
+                error.OutOfMemory, error.ArgumentsUnavailable => {
+                    output.printError(io, "{s}", .{body});
+                },
+                else => output.printError(
+                    io,
+                    "{s}\nTry '{s} --help' for more information.",
+                    .{ body, cli.name },
+                ),
+            }
         }
     };
 }
 
-fn validateResult(comptime cli: schema.Cli, comptime ResultType: type) void {
-    if (cli.commands.len == 0) {
-        @compileError("CLI must contain at least one command!");
+fn argLabel(arg: schema.Arg, buffer: []u8) []const u8 {
+    return switch (arg) {
+        .positional => |value| std.fmt.bufPrint(
+            buffer,
+            "<{s}>",
+            .{value.placeholder orelse value.name},
+        ) catch "argument",
+        .flag => |value| std.fmt.bufPrint(
+            buffer,
+            "--{s}",
+            .{value.name},
+        ) catch "argument",
+        .option => |value| std.fmt.bufPrint(
+            buffer,
+            "--{s}",
+            .{value.name},
+        ) catch "argument",
+    };
+}
+
+fn validateSchema(comptime cli: schema.Cli) void {
+    validateArgs(cli.args, "program");
+
+    inline for (cli.commands, 0..) |command, index| {
+        validateCommand(command);
+
+        inline for (cli.commands[0..index]) |previous| {
+            if (std.mem.eql(u8, command.name, previous.name)) {
+                @compileError(std.fmt.comptimePrint(
+                    "duplicate command name '{s}'",
+                    .{command.name},
+                ));
+            }
+            if (std.mem.eql(u8, schema.commandId(command), schema.commandId(previous))) {
+                @compileError(std.fmt.comptimePrint(
+                    "commands '{s}' and '{s}' derive the same field '{s}'",
+                    .{ previous.name, command.name, schema.commandId(command) },
+                ));
+            }
+        }
     }
 
+    inline for (cli.args) |global_arg| {
+        inline for (cli.commands) |command| {
+            inline for (command.args) |command_arg| {
+                if (!isNamed(global_arg) or !isNamed(command_arg)) continue;
+
+                if (std.mem.eql(
+                    u8,
+                    schema.argName(global_arg),
+                    schema.argName(command_arg),
+                )) {
+                    @compileError(std.fmt.comptimePrint(
+                        "program argument '--{s}' conflicts with command '{s}'",
+                        .{ schema.argName(global_arg), command.name },
+                    ));
+                }
+
+                if (argShort(global_arg)) |global_short| {
+                    if (argShort(command_arg)) |command_short| {
+                        if (std.mem.eql(u8, global_short, command_short)) {
+                            @compileError(std.fmt.comptimePrint(
+                                "program argument '-{s}' conflicts with command '{s}'",
+                                .{ global_short, command.name },
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn validateCommand(comptime command: schema.Command) void {
+    validateCommandName(command.name);
+    _ = schema.commandId(command);
+    validateArgs(command.args, command.name);
+}
+
+fn validateArgs(comptime args: []const schema.Arg, comptime owner: []const u8) void {
+    var multiple_positional = false;
+    var optional_positional = false;
+
+    inline for (args, 0..) |arg, index| {
+        _ = schema.argId(arg);
+
+        switch (arg) {
+            .positional => |value| {
+                if (std.mem.eql(u8, owner, "program")) {
+                    @compileError("program-level arguments must be flags or options");
+                }
+                if (multiple_positional) {
+                    @compileError("multiple positional argument must be the last positional argument");
+                }
+                if (value.required and optional_positional) {
+                    @compileError("required positional argument cannot follow an optional one");
+                }
+                if (!value.required) optional_positional = true;
+                multiple_positional = value.multiple;
+
+                if (value.placeholder) |name| validateDisplayName(name, owner);
+            },
+            .flag => |value| {
+                const long = value.name;
+                validateLongName(long, owner);
+                if (std.mem.eql(u8, long, "help") or std.mem.eql(u8, long, "version")) {
+                    @compileError("argument name 'help' or 'version' is reserved");
+                }
+                if (value.short) |short| validateShort(short, owner);
+            },
+            .option => |value| {
+                const long = value.name;
+                validateLongName(long, owner);
+                if (std.mem.eql(u8, long, "help") or std.mem.eql(u8, long, "version")) {
+                    @compileError("argument name 'help' or 'version' is reserved");
+                }
+                if (value.short) |short| validateShort(short, owner);
+                if (value.required and value.default != null) {
+                    @compileError(std.fmt.comptimePrint(
+                        "option '--{s}' cannot be required and have a default",
+                        .{long},
+                    ));
+                }
+                if (value.multiple and value.default != null) {
+                    @compileError("multiple option cannot have a default value");
+                }
+                if (value.placeholder) |name| validateDisplayName(name, owner);
+            },
+        }
+
+        inline for (args[0..index]) |previous| {
+            if (std.mem.eql(u8, schema.argId(arg), schema.argId(previous))) {
+                @compileError(std.fmt.comptimePrint(
+                    "arguments '{s}' and '{s}' both derive field '{s}' in '{s}'",
+                    .{ schema.argName(previous), schema.argName(arg), schema.argId(arg), owner },
+                ));
+            }
+
+            if (isNamed(arg) and isNamed(previous)) {
+                if (std.mem.eql(u8, schema.argName(arg), schema.argName(previous))) {
+                    @compileError(std.fmt.comptimePrint(
+                        "duplicate argument name '--{s}' in '{s}'",
+                        .{ schema.argName(arg), owner },
+                    ));
+                }
+
+                if (argShort(arg)) |short| {
+                    if (argShort(previous)) |previous_short| {
+                        if (std.mem.eql(u8, short, previous_short)) {
+                            @compileError(std.fmt.comptimePrint(
+                                "duplicate short argument '-{s}' in '{s}'",
+                                .{ short, owner },
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn validateCommandName(comptime name: []const u8) void {
+    if (name.len == 0 or name[0] == '-') {
+        @compileError("command name must not be empty or start with '-'");
+    }
+    for (name) |byte| {
+        if (byte == '=' or std.ascii.isWhitespace(byte)) {
+            @compileError("command name must not contain '=' or whitespace");
+        }
+    }
+}
+
+fn validateLongName(comptime name: []const u8, comptime owner: []const u8) void {
+    if (name.len == 0 or name[0] == '-') {
+        @compileError(std.fmt.comptimePrint(
+            "argument name must not be empty or start with '-' in '{s}'",
+            .{owner},
+        ));
+    }
+    for (name) |byte| {
+        if (byte == '=' or std.ascii.isWhitespace(byte)) {
+            @compileError(std.fmt.comptimePrint(
+                "argument name must not contain '=' or whitespace in '{s}'",
+                .{owner},
+            ));
+        }
+    }
+}
+
+fn validateDisplayName(comptime name: []const u8, comptime owner: []const u8) void {
+    if (name.len == 0) {
+        @compileError(std.fmt.comptimePrint(
+            "value name must not be empty in '{s}'",
+            .{owner},
+        ));
+    }
+    for (name) |byte| {
+        if (std.ascii.isWhitespace(byte)) {
+            @compileError(std.fmt.comptimePrint(
+                "value name must not contain whitespace in '{s}'",
+                .{owner},
+            ));
+        }
+    }
+}
+
+fn validateShort(comptime short: []const u8, comptime owner: []const u8) void {
+    if (short.len != 1) {
+        @compileError(std.fmt.comptimePrint(
+            "short argument must be exactly one byte in '{s}'",
+            .{owner},
+        ));
+    }
+    if (short[0] == '-' or short[0] == '=') {
+        @compileError(std.fmt.comptimePrint(
+            "invalid short argument '-{s}' in '{s}'",
+            .{ short, owner },
+        ));
+    }
+    if (short[0] == 'h' or short[0] == 'V') {
+        @compileError("short argument 'h' or 'V' is reserved");
+    }
+}
+
+fn validateGlobals(comptime cli: schema.Cli, comptime GlobalsType: type) void {
+    const struct_info = switch (@typeInfo(GlobalsType)) {
+        .@"struct" => |info| info,
+        else => @compileError("globals type must be a struct"),
+    };
+    if (struct_info.field_names.len != cli.args.len) {
+        @compileError("globals struct must contain exactly one field per program argument");
+    }
+
+    inline for (cli.args) |arg| {
+        const id = schema.argId(arg);
+        if (!hasField(struct_info.field_names, id)) {
+            @compileError(std.fmt.comptimePrint(
+                "globals struct is missing field '{s}'",
+                .{id},
+            ));
+        }
+        if (@FieldType(GlobalsType, id) != expectedType(arg)) {
+            @compileError(std.fmt.comptimePrint(
+                "field '{s}' of globals has an unexpected type",
+                .{id},
+            ));
+        }
+    }
+}
+
+fn validateResult(comptime cli: schema.Cli, comptime ResultType: type) void {
     const union_info = switch (@typeInfo(ResultType)) {
         .@"union" => |info| info,
         else => @compileError("result type must be a union(enum)"),
@@ -140,14 +456,14 @@ fn validateResult(comptime cli: schema.Cli, comptime ResultType: type) void {
     }
 
     inline for (cli.commands) |command| {
-        if (!hasField(union_info.field_names, command.name)) {
+        const id = schema.commandId(command);
+        if (!hasField(union_info.field_names, id)) {
             @compileError(std.fmt.comptimePrint(
                 "result union is missing field '{s}'",
-                .{command.name},
+                .{id},
             ));
         }
-        validateCommand(command);
-        validateCommandType(command, @FieldType(ResultType, command.name));
+        validateCommandType(command, @FieldType(ResultType, id));
     }
 }
 
@@ -167,7 +483,7 @@ fn validateCommandType(comptime command: schema.Command, comptime Command: type)
     }
 
     inline for (command.args) |arg| {
-        const id = argId(arg);
+        const id = schema.argId(arg);
         if (!hasField(struct_info.field_names, id)) {
             @compileError(std.fmt.comptimePrint(
                 "command '{s}' is missing field '{s}'",
@@ -181,21 +497,6 @@ fn validateCommandType(comptime command: schema.Command, comptime Command: type)
             ));
         }
     }
-}
-
-fn hasField(comptime fields: anytype, comptime name: []const u8) bool {
-    inline for (fields) |field| {
-        if (std.mem.eql(u8, field, name)) return true;
-    }
-    return false;
-}
-
-fn argId(comptime arg: schema.Arg) []const u8 {
-    return switch (arg) {
-        .positional => |value| value.id,
-        .flag => |value| value.id,
-        .option => |value| value.id,
-    };
 }
 
 fn expectedType(comptime arg: schema.Arg) type {
@@ -221,369 +522,313 @@ fn expectedType(comptime arg: schema.Arg) type {
     };
 }
 
-fn validateCommand(comptime command: schema.Command) void {
-    var multi_positional = false;
-
-    for (command.args) |arg| {
-        switch (arg) {
-            .positional => |positional| {
-                if (multi_positional) {
-                    @compileError("multiple positional argument must be the last positional argument");
-                }
-                multi_positional = positional.multiple;
-            },
-            .flag => |flag| {
-                if (std.mem.eql(u8, flag.id, "help") or std.mem.eql(u8, flag.id, "version")) {
-                    @compileError("argument id 'help' or 'version' is reserved");
-                }
-                if (flag.short) |short| {
-                    if (std.mem.eql(u8, short, "h") or std.mem.eql(u8, short, "V")) {
-                        @compileError("short argument 'h' or 'V' is reserved");
-                    }
-                }
-            },
-            .option => |option| {
-                if (std.mem.eql(u8, option.id, "help") or std.mem.eql(u8, option.id, "version")) {
-                    @compileError("argument id 'help' or 'version' is reserved");
-                }
-                if (option.short) |short| {
-                    if (std.mem.eql(u8, short, "h") or std.mem.eql(u8, short, "V")) {
-                        @compileError("short argument 'h' or 'V' is reserved");
-                    }
-                }
-            },
-        }
-    }
-}
-
-fn parseCommand(
-    comptime command: schema.Command,
-    comptime Command: type,
-    allocator: std.mem.Allocator,
-    args: []const [:0]const u8,
-) ParseError!Command {
-    if (comptime command.args.len == 0) {
-        if (args.len != 0) return ParseError.ArgumentNotFound;
-        return .{};
-    } else {
-        var counts: [command.args.len]usize = @splat(0);
-        var positional_index: usize = 0;
-        var match_count: usize = 0;
-        var index: usize = 0;
-
-        while (index < args.len) {
-            const match = try matchArg(command, args, index, &positional_index);
-            match_count += 1;
-            if (match_count > ARG_COUNT_MAX) return ParseError.TooManyArguments;
-            counts[match.arg_index] += 1;
-            index += match.consumed;
-        }
-
-        inline for (command.args, 0..) |arg, arg_index| {
-            const required = switch (arg) {
-                .positional => |value| value.required,
-                .flag => false,
-                .option => |value| value.required and value.default == null,
-            };
-            if (required and counts[arg_index] == 0) {
-                return ParseError.MissingRequiredArgument;
-            }
-        }
-
-        var result: Command = undefined;
-
-        inline for (command.args) |arg| {
-            switch (arg) {
-                .positional => |positional| {
-                    @field(result, positional.id) = if (positional.multiple)
-                        &.{}
-                    else if (positional.required)
-                        ""
-                    else
-                        null;
-                },
-                .flag => |flag| {
-                    @field(result, flag.id) = if (flag.multiple) 0 else false;
-                },
-                .option => |option| {
-                    @field(result, option.id) = if (option.multiple)
-                        &.{}
-                    else if (option.default) |default|
-                        default
-                    else if (option.required)
-                        ""
-                    else
-                        null;
-                },
-            }
-        }
-
-        errdefer freeCommandSlices(command, allocator, &result);
-
-        inline for (command.args, 0..) |arg, arg_index| {
-            switch (arg) {
-                .positional => |positional| {
-                    if (positional.multiple) {
-                        @field(result, positional.id) = allocator.alloc(
-                            []const u8,
-                            counts[arg_index],
-                        ) catch return ParseError.OutOfMemory;
-                    }
-                },
-                .flag => {},
-                .option => |option| {
-                    if (option.multiple) {
-                        @field(result, option.id) = allocator.alloc(
-                            []const u8,
-                            counts[arg_index],
-                        ) catch return ParseError.OutOfMemory;
-                    }
-                },
-            }
-        }
-
-        var fill_counts: [command.args.len]usize = @splat(0);
-        positional_index = 0;
-        index = 0;
-        while (index < args.len) {
-            const match = try matchArg(command, args, index, &positional_index);
-            inline for (command.args, 0..) |arg, arg_index| {
-                if (match.arg_index == arg_index) {
-                    switch (arg) {
-                        .positional => |positional| {
-                            if (positional.multiple) {
-                                const values: [][]const u8 = @constCast(@field(result, positional.id));
-                                values[fill_counts[arg_index]] = match.value.?;
-                                fill_counts[arg_index] += 1;
-                            } else {
-                                @field(result, positional.id) = match.value.?;
-                            }
-                        },
-                        .flag => |flag| {
-                            if (flag.multiple) {
-                                @field(result, flag.id) += 1;
-                            } else {
-                                @field(result, flag.id) = true;
-                            }
-                        },
-                        .option => |option| {
-                            if (option.multiple) {
-                                const values: [][]const u8 = @constCast(@field(result, option.id));
-                                values[fill_counts[arg_index]] = match.value.?;
-                                fill_counts[arg_index] += 1;
-                            } else {
-                                @field(result, option.id) = match.value.?;
-                            }
-                        },
-                    }
-                }
-            }
-            index += match.consumed;
-        }
-
-        return result;
-    }
-}
-
-const ArgMatch = struct {
-    arg_index: usize,
-    value: ?[]const u8,
-    consumed: usize,
-};
-
-fn matchArg(
-    comptime command: schema.Command,
-    args: []const [:0]const u8,
-    index: usize,
-    positional_index: *usize,
-) ParseError!ArgMatch {
-    const raw: []const u8 = args[index];
-    if (!isNamedArg(raw)) return matchPositional(command, raw, positional_index);
-
-    const arg_index = findNamedArg(command, raw) orelse return ParseError.ArgumentNotFound;
-    return switch (command.args[arg_index]) {
-        .positional => unreachable,
-        .flag => .{ .arg_index = arg_index, .value = null, .consumed = 1 },
-        .option => blk: {
-            if (index + 1 >= args.len) return ParseError.MissingOptionValue;
-
-            const value: []const u8 = args[index + 1];
-            if (isNamedArg(value) and findNamedArg(command, value) != null) {
-                return ParseError.MissingOptionValue;
-            }
-            break :blk .{ .arg_index = arg_index, .value = value, .consumed = 2 };
-        },
+fn isNamed(comptime arg: schema.Arg) bool {
+    return switch (arg) {
+        .positional => false,
+        .flag, .option => true,
     };
 }
 
-fn matchPositional(
-    comptime command: schema.Command,
-    value: []const u8,
-    positional_index: *usize,
-) ParseError!ArgMatch {
-    var found_index: usize = 0;
-    inline for (command.args, 0..) |arg, arg_index| {
-        switch (arg) {
-            .positional => |positional| {
-                if (found_index == positional_index.*) {
-                    if (!positional.multiple) positional_index.* += 1;
-                    return .{ .arg_index = arg_index, .value = value, .consumed = 1 };
-                }
-                found_index += 1;
-            },
-            else => {},
-        }
-    }
-    return ParseError.ArgumentNotFound;
-}
-
-fn findNamedArg(comptime command: schema.Command, raw: []const u8) ?usize {
-    const name = stripHyphen(raw);
-    inline for (command.args, 0..) |arg, arg_index| {
-        const matches = switch (arg) {
-            .positional => false,
-            .flag => |flag| std.mem.eql(u8, flag.id, name) or
-                (flag.short != null and std.mem.eql(u8, flag.short.?, name)),
-            .option => |option| std.mem.eql(u8, option.id, name) or
-                (option.short != null and std.mem.eql(u8, option.short.?, name)),
-        };
-        if (matches) return arg_index;
-    }
-    return null;
-}
-
-fn isNamedArg(value: []const u8) bool {
-    return value.len > 1 and value[0] == '-';
-}
-
-fn stripHyphen(value: []const u8) []const u8 {
-    if (std.mem.startsWith(u8, value, "--")) return value[2..];
-    if (std.mem.startsWith(u8, value, "-")) return value[1..];
-    return value;
-}
-
-fn freeCommandSlices(
-    comptime command: schema.Command,
-    allocator: std.mem.Allocator,
-    result: anytype,
-) void {
-    inline for (command.args) |arg| {
-        const multiple = switch (arg) {
-            .positional => |value| value.multiple,
-            .flag => false,
-            .option => |value| value.multiple,
-        };
-        if (multiple) {
-            const id = switch (arg) {
-                .positional => |value| value.id,
-                .flag => unreachable,
-                .option => |value| value.id,
-            };
-            const values = @field(result.*, id);
-            if (values.len > 0) allocator.free(values);
-        }
-    }
-}
-
-test "generate and parse explicit result" {
-    const Fetch = struct {
-        url: []const u8,
-        force: bool,
+fn argShort(comptime arg: schema.Arg) ?[]const u8 {
+    return switch (arg) {
+        .positional => null,
+        .flag => |value| value.short,
+        .option => |value| value.short,
     };
-    const Result = union(enum) { fetch: Fetch };
-
-    const Cli = Generate(.{
-        .name = "zommand",
-        .version = .{ .major = 0, .minor = 0, .patch = 1 },
-        .commands = &.{.{
-            .name = "fetch",
-            .args = &.{
-                .{ .positional = .{ .id = "url", .required = true } },
-                .{ .flag = .{ .id = "force", .short = "f" } },
-            },
-        }},
-    }, Result);
-
-    try std.testing.expectEqualStrings(
-        "zommand",
-        Cli.programName(),
-    );
-
-    var value = try Cli.parseSlice(
-        std.testing.allocator,
-        &.{ "zommand", "fetch", "--force", "https://example.com" },
-    );
-    defer Cli.deinit(&value, std.testing.allocator);
-
-    try std.testing.expectEqualStrings(
-        "https://example.com",
-        value.fetch.url,
-    );
-    try std.testing.expect(value.fetch.force);
 }
 
-test "deinit frees repeated values" {
-    const Build = struct {
+fn hasField(comptime fields: anytype, comptime name: []const u8) bool {
+    inline for (fields) |field| {
+        if (std.mem.eql(u8, field, name)) return true;
+    }
+    return false;
+}
+
+test "parse supports equals, terminator, and clusters" {
+    const Globals = struct { verbose: usize };
+    const Run = struct {
+        target: ?[]const u8,
+        name: ?[]const u8,
         include: []const []const u8,
     };
-    const Result = union(enum) { build: Build };
+    const Result = union(enum) { run: Run };
 
     const Cli = Generate(.{
-        .name = "zommand",
-        .version = .{ .major = 0, .minor = 0, .patch = 1 },
+        .name = "p",
+        .version = "0.0.1",
+        .args = &.{
+            .{ .flag = .{ .name = "verbose", .short = "v", .multiple = true } },
+        },
         .commands = &.{.{
-            .name = "build",
+            .name = "run",
             .args = &.{
-                .{ .option = .{ .id = "include", .multiple = true } },
+                .{ .positional = .{ .name = "target" } },
+                .{ .option = .{ .name = "name", .short = "n" } },
+                .{ .option = .{ .name = "include", .short = "i", .multiple = true } },
             },
         }},
-    }, Result);
+    }, Globals, Result);
 
-    var value = try Cli.parseSlice(
+    var parsed = switch (try Cli.parseArgs(
         std.testing.allocator,
-        &.{ "zommand", "build", "--include", "src", "--include", "tests" },
-    );
-    defer Cli.deinit(&value, std.testing.allocator);
+        &.{ "p", "-vv", "run", "-n=alice", "--", "-1" },
+    )) {
+        .parsed => |value| value,
+        else => unreachable,
+    };
+    defer Cli.deinit(&parsed, std.testing.allocator);
 
-    try std.testing.expectEqual(@as(usize, 2), value.build.include.len);
-    try std.testing.expectEqualStrings("src", value.build.include[0]);
-    try std.testing.expectEqualStrings("tests", value.build.include[1]);
+    try std.testing.expectEqual(@as(usize, 2), parsed.globals.verbose);
+    try std.testing.expectEqualStrings("alice", parsed.command.run.name.?);
+    try std.testing.expectEqualStrings("-1", parsed.command.run.target.?);
 }
 
-test "parse command without arguments" {
-    const World = struct {};
-    const Result = union(enum) { world: World };
+test "parse supports attached short values and repeated options" {
+    const Globals = struct {};
+    const Run = struct { include: []const []const u8 };
+    const Result = union(enum) { run: Run };
 
     const Cli = Generate(.{
-        .name = "greeting",
-        .version = .{ .major = 0, .minor = 0, .patch = 1 },
+        .name = "p",
+        .version = "0.0.1",
         .commands = &.{.{
-            .name = "world",
+            .name = "run",
+            .args = &.{
+                .{ .option = .{ .name = "include", .short = "i", .multiple = true } },
+            },
         }},
-    }, Result);
+    }, Globals, Result);
 
-    var value = try Cli.parseSlice(std.testing.allocator, &.{ "hello", "world" });
-    defer Cli.deinit(&value, std.testing.allocator);
-    try std.testing.expectEqual(World{}, value.world);
+    var parsed = switch (try Cli.parseArgs(
+        std.testing.allocator,
+        &.{ "p", "run", "-isrc", "--include", "tests" },
+    )) {
+        .parsed => |value| value,
+        else => unreachable,
+    };
+    defer Cli.deinit(&parsed, std.testing.allocator);
+
+    try std.testing.expectEqual(@as(usize, 2), parsed.command.run.include.len);
+    try std.testing.expectEqualStrings("src", parsed.command.run.include[0]);
+    try std.testing.expectEqualStrings("tests", parsed.command.run.include[1]);
+}
+
+test "program arguments work before and after the command" {
+    const Globals = struct { verbose: bool };
+    const Run = struct { target: ?[]const u8 };
+    const Result = union(enum) { run: Run };
+
+    const Cli = Generate(.{
+        .name = "p",
+        .version = "0.0.1",
+        .args = &.{
+            .{ .flag = .{ .name = "verbose", .short = "v" } },
+        },
+        .commands = &.{.{
+            .name = "run",
+            .args = &.{.{
+                .positional = .{ .name = "target" },
+            }},
+        }},
+    }, Globals, Result);
+
+    var before = switch (try Cli.parseArgs(
+        std.testing.allocator,
+        &.{ "p", "--verbose", "run", "x" },
+    )) {
+        .parsed => |value| value,
+        else => unreachable,
+    };
+    defer Cli.deinit(&before, std.testing.allocator);
+
+    try std.testing.expect(before.globals.verbose);
+    try std.testing.expectEqualStrings("x", before.command.run.target.?);
+
+    var after = switch (try Cli.parseArgs(
+        std.testing.allocator,
+        &.{ "p", "run", "-v", "x" },
+    )) {
+        .parsed => |value| value,
+        else => unreachable,
+    };
+    defer Cli.deinit(&after, std.testing.allocator);
+
+    try std.testing.expect(after.globals.verbose);
+}
+
+test "repeated non-multiple arguments are rejected" {
+    const Globals = struct {};
+    const Run = struct { name: ?[]const u8 };
+    const Result = union(enum) { run: Run };
+
+    const Cli = Generate(.{
+        .name = "p",
+        .version = "0.0.1",
+        .commands = &.{.{
+            .name = "run",
+            .args = &.{.{
+                .option = .{ .name = "name", .short = "n" },
+            }},
+        }},
+    }, Globals, Result);
 
     try std.testing.expectError(
-        ParseError.ArgumentNotFound,
-        Cli.parseSlice(std.testing.allocator, &.{ "hello", "world", "extra" }),
+        ParseError.DuplicateArgument,
+        Cli.parseArgs(
+            std.testing.allocator,
+            &.{ "p", "run", "--name", "a", "--name", "b" },
+        ),
+    );
+}
+
+test "help and version requests" {
+    const Globals = struct {};
+    const Run = struct { target: ?[]const u8 };
+    const Result = union(enum) { run: Run };
+
+    const command: schema.Command = .{
+        .name = "run",
+        .args = &.{.{ .positional = .{ .name = "target" } }},
+    };
+    const Cli = Generate(.{
+        .name = "p",
+        .version = "0.0.1",
+        .commands = &.{command},
+    }, Globals, Result);
+
+    const program_help = try Cli.parseArgs(std.testing.allocator, &.{ "p", "--help" });
+    try std.testing.expectEqual(@as(?schema.Command, null), program_help.help);
+
+    const command_help = try Cli.parseArgs(std.testing.allocator, &.{ "p", "run", "-h" });
+    try std.testing.expectEqualStrings("run", command_help.help.?.name);
+
+    const version = try Cli.parseArgs(std.testing.allocator, &.{ "p", "-V" });
+    try std.testing.expect(version == .version);
+}
+
+test "help used as an option value is not a request" {
+    const Globals = struct {};
+    const Run = struct { name: ?[]const u8, target: ?[]const u8 };
+    const Result = union(enum) { run: Run };
+
+    const Cli = Generate(.{
+        .name = "p",
+        .version = "0.0.1",
+        .commands = &.{.{
+            .name = "run",
+            .args = &.{
+                .{ .positional = .{ .name = "target" } },
+                .{ .option = .{ .name = "name", .short = "n" } },
+            },
+        }},
+    }, Globals, Result);
+
+    try std.testing.expectError(
+        ParseError.MissingOptionValue,
+        Cli.parseArgs(
+            std.testing.allocator,
+            &.{ "p", "run", "--name", "--help" },
+        ),
+    );
+
+    var parsed = switch (try Cli.parseArgs(
+        std.testing.allocator,
+        &.{ "p", "run", "--", "--help" },
+    )) {
+        .parsed => |value| value,
+        else => unreachable,
+    };
+    defer Cli.deinit(&parsed, std.testing.allocator);
+    try std.testing.expectEqualStrings("--help", parsed.command.run.target.?);
+}
+
+test "kebab-case names derive fields" {
+    const Globals = struct {};
+    const NewProject = struct { dry_run: bool };
+    const Result = union(enum) { new_project: NewProject };
+
+    const Cli = Generate(.{
+        .name = "p",
+        .version = "0.0.1",
+        .commands = &.{.{
+            .name = "new-project",
+            .args = &.{.{
+                .flag = .{ .name = "dry-run" },
+            }},
+        }},
+    }, Globals, Result);
+
+    var parsed = switch (try Cli.parseArgs(
+        std.testing.allocator,
+        &.{ "p", "new-project", "--dry-run" },
+    )) {
+        .parsed => |value| value,
+        else => unreachable,
+    };
+    defer Cli.deinit(&parsed, std.testing.allocator);
+    try std.testing.expect(parsed.command.new_project.dry_run);
+}
+
+test "version defaults to 0.0.1" {
+    const Globals = struct {};
+    const Run = struct {};
+    const Result = union(enum) { run: Run };
+
+    const Cli = Generate(.{
+        .name = "p",
+        .commands = &.{.{ .name = "run" }},
+    }, Globals, Result);
+
+    try std.testing.expectEqualStrings("0.0.1", Cli.version());
+
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    try Cli.writeVersion(&out.writer);
+    try std.testing.expectEqualStrings("0.0.1\n", out.writer.buffered());
+}
+
+test "writeHelp looks up a command at runtime" {
+    const Globals = struct {};
+    const Run = struct {};
+    const Result = union(enum) { run: Run };
+
+    const Cli = Generate(.{
+        .name = "p",
+        .commands = &.{.{ .name = "run" }},
+    }, Globals, Result);
+
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    try Cli.writeHelp(&out.writer, "run");
+    try std.testing.expect(std.mem.indexOf(
+        u8,
+        out.writer.buffered(),
+        "Usage: p run [options]",
+    ) != null);
+
+    try std.testing.expectError(
+        error.UnknownCommand,
+        Cli.writeHelp(&out.writer, "missing"),
     );
 }
 
 test "program help" {
+    const Globals = struct { verbose: bool };
     const Fetch = struct {};
     const Result = union(enum) { fetch: Fetch };
+
     const Cli = Generate(.{
         .name = "zommand",
-        .version = .{ .major = 0, .minor = 0, .patch = 1 },
-        .about = "Build CLIs.",
+        .version = "0.0.1",
+        .help = "Build CLIs.\nFast and small.",
+        .args = &.{.{ .flag = .{ .name = "verbose", .short = "v", .help = "Verbose output" } }},
         .commands = &.{.{
             .name = "fetch",
-            .about = "Fetch a package.",
+            .help = "Fetch a package.",
         }},
-    }, Result);
+    }, Globals, Result);
 
     var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer out.deinit();
@@ -591,42 +836,89 @@ test "program help" {
     try Cli.writeHelp(&out.writer, null);
     const text = out.writer.buffered();
 
-    try std.testing.expect(std.mem.startsWith(u8, text, "zommand 0.0.1\nBuild CLIs.\n"));
+    try std.testing.expect(std.mem.startsWith(
+        u8,
+        text,
+        "Build CLIs.\nFast and small.\n\nUsage: zommand [options] <command> [args]\n",
+    ));
     try std.testing.expect(std.mem.indexOf(u8, text, "  fetch            Fetch a package.") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text, "  -v, --verbose    Verbose output") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text, "  -h, --help       Print help") != null);
 }
 
-test "command help" {
-    const Download = struct { url: []const u8, path: []const u8 };
-    const Result = union(enum) { download: Download };
-    const command: schema.Command = .{
-        .name = "download",
-        .about = "Download a file.",
-        .args = &.{
-            .{ .positional = .{ .id = "url", .help = "File URL", .required = true } },
-            .{ .option = .{ .id = "path", .short = "p", .help = "Directory", .default = "." } },
-        },
-    };
+test "program help starts with usage without help" {
+    const Globals = struct {};
+    const Run = struct {};
+    const Result = union(enum) { run: Run };
+
     const Cli = Generate(.{
-        .name = "downloader",
-        .version = .{ .major = 0, .minor = 0, .patch = 1 },
-        .commands = &.{command},
-    }, Result);
+        .name = "p",
+        .version = "0.0.1",
+        .commands = &.{.{ .name = "run" }},
+    }, Globals, Result);
 
     var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer out.deinit();
 
-    try Cli.writeHelp(&out.writer, command);
+    try Cli.writeHelp(&out.writer, null);
+    const text = out.writer.buffered();
+
+    try std.testing.expect(std.mem.startsWith(
+        u8,
+        text,
+        "Usage: p [options] <command> [args]\n",
+    ));
+}
+
+test "command help" {
+    const Globals = struct {};
+    const Download = struct { url: []const u8, path: []const u8 };
+    const Result = union(enum) { download: Download };
+    const command: schema.Command = .{
+        .name = "download",
+        .help = "Download a file.",
+        .args = &.{
+            .{ .positional = .{
+                .name = "url",
+                .placeholder = "URL",
+                .help = "File URL",
+                .required = true,
+            } },
+            .{ .option = .{
+                .name = "path",
+                .short = "p",
+                .placeholder = "dir",
+                .help = "Directory",
+                .default = ".",
+            } },
+        },
+    };
+    const Cli = Generate(.{
+        .name = "downloader",
+        .version = "0.0.1",
+        .commands = &.{command},
+    }, Globals, Result);
+
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    try Cli.writeHelp(&out.writer, command.name);
     const text = out.writer.buffered();
 
     try std.testing.expect(std.mem.indexOf(
         u8,
         text,
-        "Usage: downloader download <url> [options]",
+        "Usage: downloader download <URL> [options]",
     ) != null);
-    try std.testing.expect(std.mem.indexOf(u8, text, "  <url>            File URL") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text, "  <URL>            File URL") != null);
     try std.testing.expect(std.mem.indexOf(
         u8,
         text,
-        "  -p, --path <value> Directory (default: .)",
+        "  -p, --path <dir> Directory (default: .)",
+    ) != null);
+    try std.testing.expect(std.mem.indexOf(
+        u8,
+        text,
+        "  -h, --help       Print help",
     ) != null);
 }

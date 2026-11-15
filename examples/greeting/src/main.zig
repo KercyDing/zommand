@@ -9,6 +9,6 @@ pub fn main(init: std.process.Init) !void {
     const result = try cli.parse(io, arena, args);
 
     switch (result) {
-        .print => |print| std.debug.print("hello, {s}!\n", .{print.name}),
+        .print => |print| std.debug.print("hello, {s}!\n", .{print.name orelse "world"}),
     }
 }
