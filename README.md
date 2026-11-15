@@ -71,6 +71,33 @@ pub fn main(init: std.process.Init) !void {
 `parseOrExit` prints usage errors and exits with code 2; use `parseArgs` with
 an explicit argv slice to handle errors yourself.
 
+## Generated API
+
+The generated module exposes:
+
+| Name | Purpose |
+|---|---|
+| `Globals` | Program-level argument values |
+| command structs | One parsed payload per command |
+| `Result` | `union(enum)` with one variant per command |
+| `Parsed` | `{ globals, command }` |
+| `Outcome` | `{ parsed, help, version }` returned by `parseArgs` |
+| `ParseError` | Parsing error set |
+| `parseOrExit(init)` | Parse process arguments; print help/version or diagnostics and exit when needed |
+| `parseArgs(arena, argv)` | Parse an explicit argv slice without printing or exiting |
+| `deinit(parsed, allocator)` | Free slices allocated for `multiple` arguments |
+
+`parseArgs` is useful for tests and custom handling:
+
+```zig
+const outcome = try cli.parseArgs(arena, &.{ "greeting", "print" });
+var parsed = switch (outcome) {
+    .parsed => |value| value,
+    else => unreachable, // help or version
+};
+defer cli.deinit(&parsed, arena);
+```
+
 ## Command line
 
 - `--name value`, `--name=value`, `-n value`, `-nvalue`, `-n=value`, and
