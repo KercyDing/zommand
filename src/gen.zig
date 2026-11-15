@@ -3,6 +3,7 @@ const builtin = @import("builtin.zig");
 const output = @import("output.zig");
 const parser = @import("parse.zig");
 const schema = @import("schema.zig");
+const validate = @import("validate.zig");
 
 /// Errors returned when parsing process arguments fails.
 pub const ParseError = parser.ParseError;
@@ -17,7 +18,7 @@ pub fn Generate(
     comptime GlobalsType: type,
     comptime ResultType: type,
 ) type {
-    @setEvalBranchQuota(comptime schema.evalBranchQuota(cli));
+    @setEvalBranchQuota(comptime validate.evalBranchQuota(cli));
     validateSchema(cli);
     validateGlobals(cli, GlobalsType);
     validateResult(cli, ResultType);
@@ -44,7 +45,7 @@ pub fn Generate(
             arena: std.mem.Allocator,
             args: std.process.Args,
         ) Parsed {
-            @setEvalBranchQuota(comptime schema.evalBranchQuota(cli));
+            @setEvalBranchQuota(comptime validate.evalBranchQuota(cli));
             var failure: parser.Failure = .{};
             const slice = args.toSlice(arena) catch |err| switch (err) {
                 error.OutOfMemory => {
@@ -90,14 +91,14 @@ pub fn Generate(
             arena: std.mem.Allocator,
             argv: []const [:0]const u8,
         ) ParseError!Outcome {
-            @setEvalBranchQuota(comptime schema.evalBranchQuota(cli));
+            @setEvalBranchQuota(comptime validate.evalBranchQuota(cli));
             var failure: parser.Failure = .{};
             return parser.parse(cli, Globals, Result, arena, argv, &failure);
         }
 
         /// Releases slices allocated for repeated positional arguments and options.
         pub fn deinit(parsed: *Parsed, allocator: std.mem.Allocator) void {
-            @setEvalBranchQuota(comptime schema.evalBranchQuota(cli));
+            @setEvalBranchQuota(comptime validate.evalBranchQuota(cli));
             parser.deinit(cli, Globals, Result, parsed, allocator);
         }
 
@@ -125,6 +126,7 @@ pub fn Generate(
                         builtin.showHelp(io, cli, candidate);
                     }
                 }
+                unreachable;
             }
             builtin.showHelp(io, cli, null);
         }
@@ -162,17 +164,17 @@ fn argLabel(arg: schema.Arg, buffer: []u8) []const u8 {
             buffer,
             "<{s}>",
             .{value.placeholder orelse value.name},
-        ) catch "argument",
+        ) catch unreachable,
         .flag => |value| std.fmt.bufPrint(
             buffer,
             "--{s}",
             .{value.name},
-        ) catch "argument",
+        ) catch unreachable,
         .option => |value| std.fmt.bufPrint(
             buffer,
             "--{s}",
             .{value.name},
-        ) catch "argument",
+        ) catch unreachable,
     };
 }
 
@@ -234,215 +236,82 @@ fn diagnosticBody(
 }
 
 fn validateSchema(comptime cli: schema.Cli) void {
-    if (!schema.isValidName(cli.name)) {
-        @compileError(std.fmt.comptimePrint(
+    if (validate.check(cli)) |issue| @compileError(issueMessage(issue));
+}
+
+fn issueMessage(comptime issue: validate.Issue) []const u8 {
+    return switch (issue) {
+        .invalid_version => |version| std.fmt.comptimePrint(
+            "version '{s}' is not a valid semantic version",
+            .{version},
+        ),
+        .invalid_program_name => |name| std.fmt.comptimePrint(
             "invalid program name '{s}'",
-            .{cli.name},
-        ));
-    }
-    if (cli.commands.len == 0) {
-        @compileError("CLI must contain at least one command");
-    }
-
-    validateArgs(cli.args, "program", true);
-
-    comptime var command_ids: [cli.commands.len][]const u8 = undefined;
-    inline for (cli.commands, 0..) |command, index| {
-        const command_id = schema.commandId(command);
-        command_ids[index] = command_id;
-        validateCommand(command);
-
-        inline for (cli.commands[0..index], 0..) |previous, previous_index| {
-            if (std.mem.eql(u8, command.name, previous.name)) {
-                @compileError(std.fmt.comptimePrint(
-                    "duplicate command name '{s}'",
-                    .{command.name},
-                ));
-            }
-            if (std.mem.eql(u8, command_id, command_ids[previous_index])) {
-                @compileError(std.fmt.comptimePrint(
-                    "commands '{s}' and '{s}' derive the same field '{s}'",
-                    .{ previous.name, command.name, command_id },
-                ));
-            }
-        }
-    }
-
-    inline for (cli.args) |global_arg| {
-        inline for (cli.commands) |command| {
-            inline for (command.args) |command_arg| {
-                if (!isNamed(global_arg) or !isNamed(command_arg)) continue;
-
-                if (std.mem.eql(
-                    u8,
-                    schema.argName(global_arg),
-                    schema.argName(command_arg),
-                )) {
-                    @compileError(std.fmt.comptimePrint(
-                        "program argument '--{s}' conflicts with command '{s}'",
-                        .{ schema.argName(global_arg), command.name },
-                    ));
-                }
-
-                if (argShort(global_arg)) |global_short| {
-                    if (argShort(command_arg)) |command_short| {
-                        if (std.mem.eql(u8, global_short, command_short)) {
-                            @compileError(std.fmt.comptimePrint(
-                                "program argument '-{s}' conflicts with command '{s}'",
-                                .{ global_short, command.name },
-                            ));
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-fn validateCommand(comptime command: schema.Command) void {
-    validateCommandName(command.name);
-    if (command.help.len == 0) {
-        @compileError(std.fmt.comptimePrint(
-            "command '{s}' must have help text",
-            .{command.name},
-        ));
-    }
-    validateArgs(command.args, command.name, false);
-}
-
-fn validateArgs(
-    comptime args: []const schema.Arg,
-    comptime owner: []const u8,
-    comptime is_program: bool,
-) void {
-    var multiple_positional = false;
-    var optional_positional = false;
-    comptime var ids: [args.len][]const u8 = undefined;
-
-    inline for (args, 0..) |arg, index| {
-        const id = schema.argId(arg);
-        ids[index] = id;
-        const help = switch (arg) {
-            .positional => |value| value.help,
-            .flag => |value| value.help,
-            .option => |value| value.help,
-        };
-        if (help.len == 0) {
-            @compileError(std.fmt.comptimePrint(
-                "argument '{s}' in '{s}' must have help text",
-                .{ schema.argName(arg), owner },
-            ));
-        }
-
-        switch (arg) {
-            .positional => |value| {
-                if (is_program) {
-                    @compileError("program-level arguments must be flags or options");
-                }
-                if (multiple_positional) {
-                    @compileError("multiple positional argument must be the last positional argument");
-                }
-                if (value.required and optional_positional) {
-                    @compileError("required positional argument cannot follow an optional one");
-                }
-                if (!value.required) optional_positional = true;
-                multiple_positional = value.multiple;
-
-                if (value.placeholder) |name| validateDisplayName(name, owner);
-            },
-            .flag => |value| {
-                const long = value.name;
-                validateLongName(long, owner);
-                if (std.mem.eql(u8, long, "help") or std.mem.eql(u8, long, "version")) {
-                    @compileError("argument name 'help' or 'version' is reserved");
-                }
-                if (value.short) |short| validateShort(short, owner);
-            },
-            .option => |value| {
-                const long = value.name;
-                validateLongName(long, owner);
-                if (std.mem.eql(u8, long, "help") or std.mem.eql(u8, long, "version")) {
-                    @compileError("argument name 'help' or 'version' is reserved");
-                }
-                if (value.short) |short| validateShort(short, owner);
-                if (value.required and value.default != null) {
-                    @compileError(std.fmt.comptimePrint(
-                        "option '--{s}' cannot be required and have a default",
-                        .{long},
-                    ));
-                }
-                if (value.multiple and value.default != null) {
-                    @compileError("multiple option cannot have a default value");
-                }
-                if (value.placeholder) |name| validateDisplayName(name, owner);
-            },
-        }
-
-        inline for (args[0..index], 0..) |previous, previous_index| {
-            if (std.mem.eql(u8, id, ids[previous_index])) {
-                @compileError(std.fmt.comptimePrint(
-                    "arguments '{s}' and '{s}' both derive field '{s}' in '{s}'",
-                    .{ schema.argName(previous), schema.argName(arg), id, owner },
-                ));
-            }
-
-            if (isNamed(arg) and isNamed(previous)) {
-                if (std.mem.eql(u8, schema.argName(arg), schema.argName(previous))) {
-                    @compileError(std.fmt.comptimePrint(
-                        "duplicate argument name '--{s}' in '{s}'",
-                        .{ schema.argName(arg), owner },
-                    ));
-                }
-
-                if (argShort(arg)) |short| {
-                    if (argShort(previous)) |previous_short| {
-                        if (std.mem.eql(u8, short, previous_short)) {
-                            @compileError(std.fmt.comptimePrint(
-                                "duplicate short argument '-{s}' in '{s}'",
-                                .{ short, owner },
-                            ));
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-fn validateCommandName(comptime name: []const u8) void {
-    if (!schema.isValidName(name)) {
-        @compileError(std.fmt.comptimePrint(
+            .{name},
+        ),
+        .missing_commands => "CLI must contain at least one command",
+        .invalid_command_name => |name| std.fmt.comptimePrint(
             "invalid command name '{s}'",
             .{name},
-        ));
-    }
-}
-
-fn validateLongName(comptime name: []const u8, comptime owner: []const u8) void {
-    if (!schema.isValidName(name)) {
-        @compileError(std.fmt.comptimePrint(
-            "invalid argument name '{s}' in '{s}'",
-            .{ name, owner },
-        ));
-    }
-}
-
-fn validateDisplayName(comptime name: []const u8, comptime owner: []const u8) void {
-    if (!schema.isValidDisplayName(name)) {
-        @compileError(std.fmt.comptimePrint(
+        ),
+        .invalid_identifier => |value| std.fmt.comptimePrint(
+            "name '{s}' is invalid: it must convert to a Zig identifier",
+            .{value.name},
+        ),
+        .missing_command_help => |name| std.fmt.comptimePrint(
+            "command '{s}' must have help text",
+            .{name},
+        ),
+        .missing_argument_help => |value| std.fmt.comptimePrint(
+            "argument '{s}' in '{s}' must have help text",
+            .{ value.name, value.owner },
+        ),
+        .program_positional => "program-level arguments must be flags or options",
+        .multiple_positional => "multiple positional argument must be the last positional argument",
+        .required_after_optional => "required positional argument cannot follow an optional one",
+        .invalid_placeholder => |value| std.fmt.comptimePrint(
             "invalid placeholder '{s}' in '{s}'",
-            .{ name, owner },
-        ));
-    }
-}
-
-fn validateShort(comptime short: []const u8, comptime owner: []const u8) void {
-    if (!schema.isValidShort(short)) {
-        @compileError(std.fmt.comptimePrint(
+            .{ value.name, value.owner },
+        ),
+        .reserved_argument_name => "argument name 'help' or 'version' is reserved",
+        .invalid_short => |value| std.fmt.comptimePrint(
             "invalid short argument '{s}' in '{s}'",
-            .{ short, owner },
-        ));
-    }
+            .{ value.short, value.owner },
+        ),
+        .required_default => |value| std.fmt.comptimePrint(
+            "option '--{s}' cannot be required and have a default",
+            .{value.name},
+        ),
+        .multiple_default => "multiple option cannot have a default value",
+        .duplicate_command_name => |name| std.fmt.comptimePrint(
+            "duplicate command name '{s}'",
+            .{name},
+        ),
+        .duplicate_command_id => |value| std.fmt.comptimePrint(
+            "commands '{s}' and '{s}' derive the same field '{s}'",
+            .{ value.previous, value.current, value.id },
+        ),
+        .duplicate_argument_id => |value| std.fmt.comptimePrint(
+            "arguments '{s}' and '{s}' both derive field '{s}' in '{s}'",
+            .{ value.previous, value.current, value.id, value.owner },
+        ),
+        .duplicate_argument_name => |value| std.fmt.comptimePrint(
+            "duplicate argument name '--{s}' in '{s}'",
+            .{ value.name, value.owner },
+        ),
+        .duplicate_short => |value| std.fmt.comptimePrint(
+            "duplicate short argument '-{s}' in '{s}'",
+            .{ value.short, value.owner },
+        ),
+        .program_name_conflict => |value| std.fmt.comptimePrint(
+            "program argument '--{s}' conflicts with command '{s}'",
+            .{ value.name, value.command },
+        ),
+        .program_short_conflict => |value| std.fmt.comptimePrint(
+            "program argument '-{s}' conflicts with command '{s}'",
+            .{ value.short, value.command },
+        ),
+    };
 }
 
 fn validateGlobals(comptime cli: schema.Cli, comptime GlobalsType: type) void {
@@ -544,21 +413,6 @@ fn expectedType(comptime arg: schema.Arg) type {
             []const u8
         else
             ?[]const u8,
-    };
-}
-
-fn isNamed(comptime arg: schema.Arg) bool {
-    return switch (arg) {
-        .positional => false,
-        .flag, .option => true,
-    };
-}
-
-fn argShort(comptime arg: schema.Arg) ?[]const u8 {
-    return switch (arg) {
-        .positional => null,
-        .flag => |value| value.short,
-        .option => |value| value.short,
     };
 }
 
@@ -829,21 +683,6 @@ test "kebab-case names derive fields" {
     };
     defer Cli.deinit(&parsed, std.testing.allocator);
     try std.testing.expect(parsed.command.new_project.dry_run);
-}
-
-test "version defaults to 0.0.1" {
-    const cli: schema.Cli = .{
-        .name = "p",
-        .commands = &.{.{ .name = "run", .help = "Run command" }},
-    };
-
-    try std.testing.expectEqualStrings("0.0.1", cli.version);
-
-    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
-    defer out.deinit();
-
-    try builtin.writeVersion(cli, &out.writer);
-    try std.testing.expectEqualStrings("0.0.1\n", out.writer.buffered());
 }
 
 test "help wraps long lines" {

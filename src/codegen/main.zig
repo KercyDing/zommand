@@ -1,6 +1,6 @@
 const std = @import("std");
 
-const schema = @import("schema");
+const schema = @import("../schema.zig");
 const emit = @import("emit.zig");
 
 const source_size_max = 1024 * 1024;

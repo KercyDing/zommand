@@ -1,5 +1,6 @@
 const std = @import("std");
 const schema = @import("schema.zig");
+const validate = @import("validate.zig");
 const output = @import("output.zig");
 
 /// Minimum help column: two-space indent and a 16-character label field.
@@ -84,7 +85,7 @@ pub fn writeHelp(
     comptime command: ?schema.Command,
     writer: *std.Io.Writer,
 ) std.Io.Writer.Error!void {
-    @setEvalBranchQuota(comptime schema.evalBranchQuota(cli));
+    @setEvalBranchQuota(comptime validate.evalBranchQuota(cli));
     if (command) |cmd| {
         try writeCommand(cli, writer, cmd);
     } else {
@@ -292,9 +293,9 @@ fn namedLabel(comptime arg: schema.Arg, buffer: []u8) []const u8 {
                 buffer,
                 "-{s}, --{s}",
                 .{ short, schema.argName(arg) },
-            ) catch "argument"
+            ) catch unreachable
         else
-            std.fmt.bufPrint(buffer, "--{s}", .{schema.argName(arg)}) catch "argument",
+            std.fmt.bufPrint(buffer, "--{s}", .{schema.argName(arg)}) catch unreachable,
         .option => |option| {
             const placeholder = schema.argPlaceholder(arg);
             const suffix: []const u8 = if (option.multiple) ">..." else ">";
@@ -303,13 +304,13 @@ fn namedLabel(comptime arg: schema.Arg, buffer: []u8) []const u8 {
                     buffer,
                     "-{s}, --{s} <{s}{s}",
                     .{ short, schema.argName(arg), placeholder, suffix },
-                ) catch "argument";
+                ) catch unreachable;
             }
             return std.fmt.bufPrint(
                 buffer,
                 "--{s} <{s}{s}",
                 .{ schema.argName(arg), placeholder, suffix },
-            ) catch "argument";
+            ) catch unreachable;
         },
     };
 }
@@ -333,13 +334,13 @@ fn positionalLabel(comptime arg: schema.Arg, buffer: []u8) []const u8 {
                 buffer,
                 "<{s}>...",
                 .{schema.argPlaceholder(arg)},
-            ) catch "argument"
+            ) catch unreachable
         else
             std.fmt.bufPrint(
                 buffer,
                 "<{s}>",
                 .{schema.argPlaceholder(arg)},
-            ) catch "argument",
+            ) catch unreachable,
         .flag, .option => unreachable,
     };
 }

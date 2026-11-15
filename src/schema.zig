@@ -21,15 +21,6 @@ pub const Cli = struct {
     commands: []const Command = &.{},
 };
 
-/// Returns a compile-time branch quota based on schema size.
-pub fn evalBranchQuota(comptime cli: Cli) u32 {
-    var count: u32 = @intCast(cli.args.len + cli.commands.len);
-    for (cli.commands) |command| {
-        count += @intCast(command.args.len);
-    }
-    return 100_000 + count * 1_000;
-}
-
 pub const Command = struct {
     /// Command name shown on the command line, for example: "new-project".
     /// `-` is converted to `_` for the generated Zig field and type name.
@@ -77,36 +68,29 @@ pub const Option = struct {
     default: ?[]const u8 = null,
 };
 
-/// Returns true for valid command and argument names.
-pub fn isValidName(name: []const u8) bool {
-    if (name.len == 0 or name[0] == '-') return false;
-    for (name) |byte| {
-        if (byte == '=' or std.ascii.isWhitespace(byte)) return false;
-    }
-    return true;
-}
-
-/// Returns true for valid help placeholders.
-pub fn isValidDisplayName(name: []const u8) bool {
-    if (name.len == 0) return false;
-    for (name) |byte| {
-        if (std.ascii.isWhitespace(byte)) return false;
-    }
-    return true;
-}
-
-/// Returns true for valid short argument names.
-pub fn isValidShort(short: []const u8) bool {
-    if (short.len != 1) return false;
-    return short[0] != '-' and short[0] != '=' and short[0] != 'h' and short[0] != 'V';
-}
-
 /// Returns the command-line name for `arg`.
 pub fn argName(arg: Arg) []const u8 {
     return switch (arg) {
         .positional => |value| value.name,
         .flag => |value| value.name,
         .option => |value| value.name,
+    };
+}
+
+/// Returns true when `arg` is a flag or option.
+pub fn isNamed(arg: Arg) bool {
+    return switch (arg) {
+        .positional => false,
+        .flag, .option => true,
+    };
+}
+
+/// Returns the short name for `arg`, if any.
+pub fn argShort(arg: Arg) ?[]const u8 {
+    return switch (arg) {
+        .positional => null,
+        .flag => |value| value.short,
+        .option => |value| value.short,
     };
 }
 

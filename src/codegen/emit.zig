@@ -1,5 +1,6 @@
 const std = @import("std");
-const schema = @import("schema");
+const schema = @import("../schema.zig");
+const validate = @import("../validate.zig");
 
 /// Emits a typed CLI module from a schema.
 pub fn emit(allocator: std.mem.Allocator, cli: schema.Cli, writer: *std.Io.Writer) !void {
@@ -277,49 +278,18 @@ fn typeName(allocator: std.mem.Allocator, id: []const u8) ![]const u8 {
 }
 
 fn validateCli(allocator: std.mem.Allocator, cli: schema.Cli) !void {
-    _ = std.SemanticVersion.parse(cli.version) catch {
-        std.log.err("version '{s}' is not a valid semantic version", .{cli.version});
-        return error.InvalidSchema;
-    };
-
-    if (!schema.isValidName(cli.name)) {
-        std.log.err("invalid program name '{s}'", .{cli.name});
+    if (validate.check(cli)) |issue| {
+        logIssue(issue);
         return error.InvalidSchema;
     }
-    if (cli.commands.len == 0) {
-        std.log.err("CLI must contain at least one command", .{});
-        return error.InvalidSchema;
-    }
-
-    try validateArgs(allocator, cli.args, "program", true);
 
     for (cli.commands, 0..) |command, index| {
-        try validateCommandName(command.name);
-        if (command.help.len == 0) {
-            std.log.err("command '{s}' must have help text", .{command.name});
-            return error.InvalidSchema;
-        }
-        const id = try resolveId(allocator, command.name);
-        _ = try typeName(allocator, id);
-        try validateArgs(allocator, command.args, command.name, false);
-
+        const name = try typeName(allocator, try resolveId(allocator, command.name));
         for (cli.commands[0..index]) |previous| {
-            if (std.mem.eql(u8, command.name, previous.name)) {
-                std.log.err("duplicate command name '{s}'", .{command.name});
-                return error.InvalidSchema;
-            }
-
-            const previous_id = try resolveId(allocator, previous.name);
-            if (std.mem.eql(u8, id, previous_id)) {
-                std.log.err(
-                    "commands '{s}' and '{s}' derive the same field '{s}'",
-                    .{ previous.name, command.name, id },
-                );
-                return error.InvalidSchema;
-            }
-
-            const name = try typeName(allocator, id);
-            const previous_name = try typeName(allocator, previous_id);
+            const previous_name = try typeName(
+                allocator,
+                try resolveId(allocator, previous.name),
+            );
             if (std.mem.eql(u8, name, previous_name)) {
                 std.log.err(
                     "commands '{s}' and '{s}' derive the same type name '{s}'",
@@ -329,194 +299,88 @@ fn validateCli(allocator: std.mem.Allocator, cli: schema.Cli) !void {
             }
         }
     }
+}
 
-    for (cli.args) |global_arg| {
-        for (cli.commands) |command| {
-            for (command.args) |command_arg| {
-                if (!isNamed(global_arg) or !isNamed(command_arg)) continue;
-
-                if (std.mem.eql(
-                    u8,
-                    schema.argName(global_arg),
-                    schema.argName(command_arg),
-                )) {
-                    std.log.err(
-                        "program argument '--{s}' conflicts with command '{s}'",
-                        .{ schema.argName(global_arg), command.name },
-                    );
-                    return error.InvalidSchema;
-                }
-
-                if (argShort(global_arg)) |global_short| {
-                    if (argShort(command_arg)) |command_short| {
-                        if (std.mem.eql(u8, global_short, command_short)) {
-                            std.log.err(
-                                "program argument '-{s}' conflicts with command '{s}'",
-                                .{ global_short, command.name },
-                            );
-                            return error.InvalidSchema;
-                        }
-                    }
-                }
-            }
-        }
+fn logIssue(issue: validate.Issue) void {
+    switch (issue) {
+        .invalid_version => |version| std.log.err(
+            "version '{s}' is not a valid semantic version",
+            .{version},
+        ),
+        .invalid_program_name => |name| std.log.err("invalid program name '{s}'", .{name}),
+        .missing_commands => std.log.err("CLI must contain at least one command", .{}),
+        .invalid_command_name => |name| std.log.err("invalid command name '{s}'", .{name}),
+        .invalid_identifier => |value| std.log.err(
+            "name '{s}' is invalid: it must convert to a Zig identifier",
+            .{value.name},
+        ),
+        .missing_command_help => |name| std.log.err(
+            "command '{s}' must have help text",
+            .{name},
+        ),
+        .missing_argument_help => |value| std.log.err(
+            "argument '{s}' in '{s}' must have help text",
+            .{ value.name, value.owner },
+        ),
+        .program_positional => std.log.err(
+            "program-level arguments must be flags or options",
+            .{},
+        ),
+        .multiple_positional => std.log.err(
+            "multiple positional argument must be the last positional argument",
+            .{},
+        ),
+        .required_after_optional => std.log.err(
+            "required positional argument cannot follow an optional one",
+            .{},
+        ),
+        .invalid_placeholder => |value| std.log.err(
+            "invalid placeholder '{s}' in '{s}'",
+            .{ value.name, value.owner },
+        ),
+        .reserved_argument_name => std.log.err(
+            "argument name 'help' or 'version' is reserved",
+            .{},
+        ),
+        .invalid_short => |value| std.log.err(
+            "invalid short argument '{s}' in '{s}'",
+            .{ value.short, value.owner },
+        ),
+        .required_default => |value| std.log.err(
+            "option '--{s}' cannot be required and have a default",
+            .{value.name},
+        ),
+        .multiple_default => std.log.err(
+            "multiple option cannot have a default value",
+            .{},
+        ),
+        .duplicate_command_name => |name| std.log.err(
+            "duplicate command name '{s}'",
+            .{name},
+        ),
+        .duplicate_command_id => |value| std.log.err(
+            "commands '{s}' and '{s}' derive the same field '{s}'",
+            .{ value.previous, value.current, value.id },
+        ),
+        .duplicate_argument_id => |value| std.log.err(
+            "arguments '{s}' and '{s}' both derive field '{s}' in '{s}'",
+            .{ value.previous, value.current, value.id, value.owner },
+        ),
+        .duplicate_argument_name => |value| std.log.err(
+            "duplicate argument name '--{s}' in '{s}'",
+            .{ value.name, value.owner },
+        ),
+        .duplicate_short => |value| std.log.err(
+            "duplicate short argument '-{s}' in '{s}'",
+            .{ value.short, value.owner },
+        ),
+        .program_name_conflict => |value| std.log.err(
+            "program argument '--{s}' conflicts with command '{s}'",
+            .{ value.name, value.command },
+        ),
+        .program_short_conflict => |value| std.log.err(
+            "program argument '-{s}' conflicts with command '{s}'",
+            .{ value.short, value.command },
+        ),
     }
-}
-
-fn validateArgs(
-    allocator: std.mem.Allocator,
-    args: []const schema.Arg,
-    owner: []const u8,
-    is_program: bool,
-) !void {
-    var multiple_positional = false;
-    var optional_positional = false;
-
-    for (args, 0..) |arg, index| {
-        const id = try resolveId(allocator, schema.argName(arg));
-        const help = switch (arg) {
-            .positional => |value| value.help,
-            .flag => |value| value.help,
-            .option => |value| value.help,
-        };
-        if (help.len == 0) {
-            std.log.err(
-                "argument '{s}' in '{s}' must have help text",
-                .{ schema.argName(arg), owner },
-            );
-            return error.InvalidSchema;
-        }
-
-        switch (arg) {
-            .positional => |value| {
-                if (is_program) {
-                    std.log.err("program-level arguments must be flags or options", .{});
-                    return error.InvalidSchema;
-                }
-                if (multiple_positional) {
-                    std.log.err(
-                        "multiple positional argument must be the last positional argument",
-                        .{},
-                    );
-                    return error.InvalidSchema;
-                }
-                if (value.required and optional_positional) {
-                    std.log.err(
-                        "required positional argument cannot follow an optional one",
-                        .{},
-                    );
-                    return error.InvalidSchema;
-                }
-                if (!value.required) optional_positional = true;
-                multiple_positional = value.multiple;
-                if (value.placeholder) |name| try validateDisplayName(name, owner);
-            },
-            .flag => |value| {
-                const long = value.name;
-                try validateLongName(long, owner);
-                if (std.mem.eql(u8, long, "help") or std.mem.eql(u8, long, "version")) {
-                    std.log.err("argument name 'help' or 'version' is reserved", .{});
-                    return error.InvalidSchema;
-                }
-                if (value.short) |short| try validateShort(short, owner);
-            },
-            .option => |value| {
-                const long = value.name;
-                try validateLongName(long, owner);
-                if (std.mem.eql(u8, long, "help") or std.mem.eql(u8, long, "version")) {
-                    std.log.err("argument name 'help' or 'version' is reserved", .{});
-                    return error.InvalidSchema;
-                }
-                if (value.short) |short| try validateShort(short, owner);
-                if (value.required and value.default != null) {
-                    std.log.err(
-                        "option '--{s}' cannot be required and have a default",
-                        .{long},
-                    );
-                    return error.InvalidSchema;
-                }
-                if (value.multiple and value.default != null) {
-                    std.log.err("multiple option cannot have a default value", .{});
-                    return error.InvalidSchema;
-                }
-                if (value.placeholder) |name| try validateDisplayName(name, owner);
-            },
-        }
-
-        for (args[0..index]) |previous| {
-            const previous_id = try resolveId(allocator, schema.argName(previous));
-            if (std.mem.eql(u8, id, previous_id)) {
-                std.log.err(
-                    "arguments '{s}' and '{s}' both derive field '{s}' in '{s}'",
-                    .{ schema.argName(previous), schema.argName(arg), id, owner },
-                );
-                return error.InvalidSchema;
-            }
-
-            if (isNamed(arg) and isNamed(previous)) {
-                if (std.mem.eql(u8, schema.argName(arg), schema.argName(previous))) {
-                    std.log.err(
-                        "duplicate argument name '--{s}' in '{s}'",
-                        .{ schema.argName(arg), owner },
-                    );
-                    return error.InvalidSchema;
-                }
-
-                if (argShort(arg)) |short| {
-                    if (argShort(previous)) |previous_short| {
-                        if (std.mem.eql(u8, short, previous_short)) {
-                            std.log.err(
-                                "duplicate short argument '-{s}' in '{s}'",
-                                .{ short, owner },
-                            );
-                            return error.InvalidSchema;
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-fn validateCommandName(name: []const u8) !void {
-    if (!schema.isValidName(name)) {
-        std.log.err("invalid command name '{s}'", .{name});
-        return error.InvalidSchema;
-    }
-}
-
-fn validateLongName(name: []const u8, owner: []const u8) !void {
-    if (!schema.isValidName(name)) {
-        std.log.err("invalid argument name '{s}' in '{s}'", .{ name, owner });
-        return error.InvalidSchema;
-    }
-}
-
-fn validateDisplayName(name: []const u8, owner: []const u8) !void {
-    if (!schema.isValidDisplayName(name)) {
-        std.log.err("invalid placeholder '{s}' in '{s}'", .{ name, owner });
-        return error.InvalidSchema;
-    }
-}
-
-fn validateShort(short: []const u8, owner: []const u8) !void {
-    if (!schema.isValidShort(short)) {
-        std.log.err("invalid short argument '{s}' in '{s}'", .{ short, owner });
-        return error.InvalidSchema;
-    }
-}
-
-fn isNamed(arg: schema.Arg) bool {
-    return switch (arg) {
-        .positional => false,
-        .flag, .option => true,
-    };
-}
-
-fn argShort(arg: schema.Arg) ?[]const u8 {
-    return switch (arg) {
-        .positional => null,
-        .flag => |value| value.short,
-        .option => |value| value.short,
-    };
 }

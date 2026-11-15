@@ -5,25 +5,16 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const command_mod = b.addModule("command", .{
+    const lib_mod = b.addModule("command", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
         .optimize = optimize,
     });
 
-    const schema_mod = b.createModule(.{
-        .root_source_file = b.path("src/schema.zig"),
-        .target = b.graph.host,
-        .optimize = .debug,
-    });
-
     const codegen_mod = b.createModule(.{
-        .root_source_file = b.path("src/codegen/main.zig"),
+        .root_source_file = b.path("src/codegen.zig"),
         .target = b.graph.host,
         .optimize = .debug,
-        .imports = &.{
-            .{ .name = "schema", .module = schema_mod },
-        },
     });
     const codegen = b.addExecutable(.{
         .name = "codegen",
@@ -32,7 +23,7 @@ pub fn build(b: *std.Build) void {
     b.installArtifact(codegen);
 
     const lib_tests = b.addTest(.{
-        .root_module = command_mod,
+        .root_module = lib_mod,
     });
 
     const test_step = b.step("test", "Run zommand tests");

@@ -1,5 +1,6 @@
 const schema = @import("schema.zig");
 const gen = @import("gen.zig");
+const validate = @import("validate.zig");
 
 // =============== Types ===============
 // Used by generated schema modules;
@@ -22,4 +23,5 @@ test {
 
     std.testing.refAllDecls(schema);
     std.testing.refAllDecls(gen);
+    std.testing.refAllDecls(validate);
 }
