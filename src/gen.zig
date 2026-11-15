@@ -739,9 +739,16 @@ test "program help" {
         text,
         "Build CLIs.\nFast and small.\n\nUsage: zommand [options] <command> [args]\n",
     ));
-    try std.testing.expect(std.mem.indexOf(u8, text, "  fetch            Fetch a package.") != null);
-    try std.testing.expect(std.mem.indexOf(u8, text, "  -v, --verbose    Verbose output") != null);
-    try std.testing.expect(std.mem.indexOf(u8, text, "  -h, --help       Print help") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text, "  fetch") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text, "Fetch a package.") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text, "  -v, --verbose") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text, "Verbose output") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text, "  -h, --help") != null);
+
+    const fetch_column = helpDescriptionColumn(text, "fetch").?;
+    const verbose_column = helpDescriptionColumn(text, "-v, --verbose").?;
+    try std.testing.expectEqual(fetch_column, verbose_column);
+    try std.testing.expect(fetch_column >= 2 + "fetch".len + 4);
 }
 
 test "program help starts with usage without help" {
@@ -801,17 +808,16 @@ test "command help" {
         text,
         "Usage: downloader download <URL> [options]",
     ) != null);
-    try std.testing.expect(std.mem.indexOf(u8, text, "  <URL>            File URL") != null);
-    try std.testing.expect(std.mem.indexOf(
-        u8,
-        text,
-        "  -p, --path <dir> Directory (default: .)",
-    ) != null);
-    try std.testing.expect(std.mem.indexOf(
-        u8,
-        text,
-        "  -h, --help       Print help",
-    ) != null);
+    try std.testing.expect(std.mem.indexOf(u8, text, "  <URL>") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text, "File URL") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text, "  -p, --path <dir>") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text, "Directory (default: .)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text, "  -h, --help") != null);
+
+    const url_column = helpDescriptionColumn(text, "<URL>").?;
+    const path_column = helpDescriptionColumn(text, "-p, --path <dir>").?;
+    try std.testing.expectEqual(url_column, path_column);
+    try std.testing.expect(path_column >= 2 + "-p, --path <dir>".len + 4);
 }
 
 test "large schema parses within quota" {
@@ -871,4 +877,14 @@ test "large schema parses within quota" {
     try std.testing.expectEqualStrings("input.txt", parsed.command.a.path);
     try std.testing.expect(parsed.command.a.flag0);
     try std.testing.expect(!parsed.command.a.flag1);
+}
+
+fn helpDescriptionColumn(text: []const u8, label: []const u8) ?usize {
+    const start = std.mem.lastIndexOf(u8, text, label) orelse return null;
+    var index = start + label.len;
+    while (index < text.len and text[index] == ' ') : (index += 1) {}
+    if (index == text.len or text[index] == '\n') return null;
+
+    const line_start = if (std.mem.lastIndexOfScalar(u8, text[0..start], '\n')) |pos| pos + 1 else 0;
+    return index - line_start;
 }

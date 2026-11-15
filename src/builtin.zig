@@ -5,6 +5,8 @@ const output = @import("output.zig");
 
 /// Minimum help column: two-space indent and a 16-character label field.
 const min_help_width = 16;
+/// Spaces between the label column and its help text.
+const help_gap = 4;
 /// Preferred maximum help line width.
 const max_help_width = 80;
 
@@ -17,8 +19,7 @@ fn writeHelpPrefix(writer: *std.Io.Writer, label: []const u8, width: usize) std.
     try writer.writeAll("  ");
     try writer.writeAll(label);
     const padding = if (label.len < width) width - label.len else 0;
-    try writeSpaces(writer, padding);
-    try writer.writeByte(' ');
+    try writeSpaces(writer, padding + help_gap);
 }
 
 fn writeWrapped(
@@ -73,7 +74,7 @@ fn writeHelpRow(
         return;
     }
 
-    const prefix_width = 2 + width + 1;
+    const prefix_width = 2 + width + help_gap;
     try writeHelpPrefix(writer, label, width);
     try writeWrapped(writer, help, max_help_width, prefix_width, prefix_width);
     try writer.writeByte('\n');
@@ -128,17 +129,20 @@ fn writeProgram(comptime cli: schema.Cli, writer: *std.Io.Writer) std.Io.Writer.
 
     try writer.print("Usage: {s} [options] <command> [args]\n", .{cli.name});
 
+    const help_width = @max(
+        min_help_width,
+        @max(commandWidth(cli.commands), namedWidth(cli.args, true)),
+    );
+
     try writer.writeAll("\nCommands:\n\n");
-    const command_width = @max(min_help_width, commandWidth(cli.commands));
     inline for (cli.commands) |command| {
-        try writeHelpRow(writer, command.name, firstLine(command.help), command_width);
+        try writeHelpRow(writer, command.name, firstLine(command.help), help_width);
     }
 
     try writer.writeAll("\nOptions:\n\n");
-    const option_width = @max(min_help_width, namedWidth(cli.args, true));
-    try writeNamedRows(cli.args, writer, option_width);
-    try writeHelpRow(writer, "-h, --help", "Print help", option_width);
-    try writeHelpRow(writer, "-V, --version", "Print version", option_width);
+    try writeNamedRows(cli.args, writer, help_width);
+    try writeHelpRow(writer, "-h, --help", "Print help", help_width);
+    try writeHelpRow(writer, "-V, --version", "Print version", help_width);
 }
 
 fn writeCommand(
@@ -166,15 +170,19 @@ fn writeCommand(
     }
     try writer.writeAll(" [options]\n");
 
+    const help_width = @max(
+        min_help_width,
+        @max(positionalWidth(command.args), namedWidth(command.args, true)),
+    );
+
     if (commandHasPositionals(command)) {
         try writer.writeAll("\nArguments:\n\n");
-        const argument_width = @max(min_help_width, positionalWidth(command.args));
         inline for (command.args) |arg| {
             switch (arg) {
                 .positional => |positional| {
                     var label_buffer: [256]u8 = undefined;
                     const label = positionalLabel(arg, &label_buffer);
-                    try writeHelpRow(writer, label, positional.help, argument_width);
+                    try writeHelpRow(writer, label, positional.help, help_width);
                 },
                 else => {},
             }
@@ -182,9 +190,8 @@ fn writeCommand(
     }
 
     try writer.writeAll("\nOptions:\n\n");
-    const option_width = @max(min_help_width, namedWidth(command.args, true));
-    try writeNamedRows(command.args, writer, option_width);
-    try writeHelpRow(writer, "-h, --help", "Print help", option_width);
+    try writeNamedRows(command.args, writer, help_width);
+    try writeHelpRow(writer, "-h, --help", "Print help", help_width);
 }
 
 fn writeNamedRows(
@@ -226,7 +233,7 @@ fn writeNamedRows(
                     try writer.writeAll(label);
                     try writer.writeByte('\n');
                 } else {
-                    const prefix_width = 2 + width + 1;
+                    const prefix_width = 2 + width + help_gap;
                     try writeHelpPrefix(writer, label, width);
                     try writeWrapped(writer, help, max_help_width, prefix_width, prefix_width);
                     try writer.writeAll(extra);
