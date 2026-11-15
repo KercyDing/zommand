@@ -4,14 +4,59 @@ const output = @import("output.zig");
 
 /// Minimum help column: two-space indent and a 16-character label field.
 const min_help_width = 16;
+/// Preferred maximum help line width.
+const max_help_width = 80;
+
+fn writeSpaces(writer: *std.Io.Writer, count: usize) std.Io.Writer.Error!void {
+    var remaining = count;
+    while (remaining > 0) : (remaining -= 1) try writer.writeByte(' ');
+}
 
 fn writeHelpPrefix(writer: *std.Io.Writer, label: []const u8, width: usize) std.Io.Writer.Error!void {
     try writer.writeAll("  ");
     try writer.writeAll(label);
     const padding = if (label.len < width) width - label.len else 0;
-    var remaining = padding;
-    while (remaining > 0) : (remaining -= 1) try writer.writeByte(' ');
+    try writeSpaces(writer, padding);
     try writer.writeByte(' ');
+}
+
+fn writeWrapped(
+    writer: *std.Io.Writer,
+    text: []const u8,
+    width: usize,
+    initial_column: usize,
+    indent: usize,
+) std.Io.Writer.Error!void {
+    const limit = @max(width, indent + 20);
+
+    var lines = std.mem.splitScalar(u8, text, '\n');
+    var first_line = true;
+    while (lines.next()) |line| {
+        if (!first_line) {
+            try writer.writeByte('\n');
+            try writeSpaces(writer, indent);
+        }
+
+        var column: usize = if (first_line) initial_column else indent;
+        var first_word = true;
+        var words = std.mem.tokenizeAny(u8, line, " \t");
+        while (words.next()) |word| {
+            if (!first_word) {
+                if (column + 1 + word.len > limit) {
+                    try writer.writeByte('\n');
+                    try writeSpaces(writer, indent);
+                    column = indent;
+                } else {
+                    try writer.writeByte(' ');
+                    column += 1;
+                }
+            }
+            try writer.writeAll(word);
+            column += word.len;
+            first_word = false;
+        }
+        first_line = false;
+    }
 }
 
 fn writeHelpRow(
@@ -27,8 +72,9 @@ fn writeHelpRow(
         return;
     }
 
+    const prefix_width = 2 + width + 1;
     try writeHelpPrefix(writer, label, width);
-    try writer.writeAll(help);
+    try writeWrapped(writer, help, max_help_width, prefix_width, prefix_width);
     try writer.writeByte('\n');
 }
 
@@ -72,7 +118,7 @@ pub fn showVersion(io: std.Io, comptime cli: schema.Cli) noreturn {
 fn writeProgram(comptime cli: schema.Cli, writer: *std.Io.Writer) std.Io.Writer.Error!void {
     if (cli.help) |help| {
         if (help.len != 0) {
-            try writer.writeAll(help);
+            try writeWrapped(writer, help, max_help_width, 0, 0);
             try writer.writeByte('\n');
             try writer.writeByte('\n');
         }
@@ -100,7 +146,7 @@ fn writeCommand(
 ) std.Io.Writer.Error!void {
     if (command.help) |help| {
         if (help.len != 0) {
-            try writer.writeAll(help);
+            try writeWrapped(writer, help, max_help_width, 0, 0);
             try writer.writeByte('\n');
             try writer.writeByte('\n');
         }
@@ -158,23 +204,32 @@ fn writeNamedRows(
                 var label_buffer: [256]u8 = undefined;
                 const label = namedLabel(arg, &label_buffer);
                 const help = option.help orelse "";
-                const has_annotation =
-                    (option.required and option.default == null) or
-                    option.default != null;
 
-                if (help.len == 0 and !has_annotation) {
+                var extra_buffer: [256]u8 = undefined;
+                var extra_len: usize = 0;
+                if (option.required and option.default == null) {
+                    const annotation = " (required)";
+                    @memcpy(extra_buffer[extra_len..][0..annotation.len], annotation);
+                    extra_len += annotation.len;
+                } else if (option.default) |default| {
+                    const annotation = std.fmt.bufPrint(
+                        extra_buffer[extra_len..],
+                        " (default: {s})",
+                        .{default},
+                    ) catch "";
+                    extra_len += annotation.len;
+                }
+                const extra = extra_buffer[0..extra_len];
+
+                if (help.len == 0 and extra.len == 0) {
                     try writer.writeAll("  ");
                     try writer.writeAll(label);
                     try writer.writeByte('\n');
                 } else {
+                    const prefix_width = 2 + width + 1;
                     try writeHelpPrefix(writer, label, width);
-                    try writer.writeAll(help);
-                    if (option.required and option.default == null) {
-                        try writer.writeAll(" (required)");
-                    }
-                    if (option.default) |default| {
-                        try writer.print(" (default: {s})", .{default});
-                    }
+                    try writeWrapped(writer, help, max_help_width, prefix_width, prefix_width);
+                    try writer.writeAll(extra);
                     try writer.writeByte('\n');
                 }
             },
