@@ -135,7 +135,7 @@ pub fn deriveId(name: []const u8, buffer: []u8) ?[]const u8 {
 }
 
 fn derivedId(comptime name: []const u8) []const u8 {
-    @setEvalBranchQuota(10_000);
+    @setEvalBranchQuota(100_000);
     comptime var buffer: [name.len]u8 = undefined;
     const result = deriveId(name, &buffer) orelse {
         @compileError(std.fmt.comptimePrint(
