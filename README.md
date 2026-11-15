@@ -4,7 +4,13 @@ A Zig library to build CLIs from a `.zon` schema.
 
 ## Usage
 
-Add the dependency:
+Pin a release:
+
+```bash
+zig fetch --save git+https://github.com/KercyDing/zommand#v0.1.0
+```
+
+Track `main` for the latest changes; it may contain breaking changes:
 
 ```bash
 zig fetch --save git+https://github.com/KercyDing/zommand#main
