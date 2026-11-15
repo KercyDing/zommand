@@ -67,8 +67,33 @@ switch (parsed.command) {
 }
 ```
 
-`-h` is an alias for `--help`; `-V` is an alias for `--version`. The
-`help`/`version` argument ids and `h`/`V` short names are reserved.
+`parseOrExit` prints usage errors and exits with code 2; use `parseArgs` with
+an explicit argv slice to handle errors yourself.
+
+## Command line
+
+- `--name value`, `--name=value`, `-n value`, `-nvalue`, `-n=value`, and
+  clustered short flags such as `-vv` are accepted.
+- `--` stops option parsing, so positionals may start with `-`. A dash-leading
+  option value can use `--name=-x`.
+- Non-`multiple` options and flags cannot be repeated.
+- `-h`/`--help` and `-V`/`--version` are reserved. Program-level `Cli.args` are
+  accepted before or after the command and returned in `parsed.globals`.
+- Usage errors go to stderr; `parseOrExit` exits with code 2.
+
+## Naming
+
+`name` is both the CLI token and the source for the Zig field and generated
+type: `-` becomes `_`, and invalid names are schema errors. Zig keywords are
+emitted as escaped identifiers, for example `@"type"`.
+
+For arguments, `name` is the CLI name and field source, `short` is optional,
+and `placeholder` only affects help:
+
+```zig
+.{ .name = "new-project" }
+.{ .option = .{ .name = "dry-run", .short = "n", .placeholder = "mode" } }
+```
 
 See [`src/schema.zig`](src/schema.zig) for all fields.
 
@@ -76,7 +101,6 @@ See [`src/schema.zig`](src/schema.zig) for all fields.
 
 Complete projects live in [`examples`](examples):
 
-- [`downloader`](examples/downloader): stream a URL into a directory
 - [`greeting`](examples/greeting): minimal schema, one command, one option
 - [`downloader`](examples/downloader): every optional field written out
 
