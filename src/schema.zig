@@ -26,7 +26,7 @@ pub const Command = struct {
     /// `-` is converted to `_` for the generated Zig field and type name.
     name: []const u8,
     /// Help text shown in the command list and command help.
-    help: ?[]const u8 = null,
+    help: []const u8,
     /// Arguments owned by this command.
     args: []const Arg = &.{},
 };
@@ -42,7 +42,7 @@ pub const Positional = struct {
     name: []const u8,
     /// Placeholder shown in help. Defaults to `name`.
     placeholder: ?[]const u8 = null,
-    help: ?[]const u8 = null,
+    help: []const u8,
     required: bool = false,
     multiple: bool = false,
 };
@@ -51,7 +51,7 @@ pub const Flag = struct {
     /// Command-line name, also used as the result field name.
     name: []const u8,
     short: ?[]const u8 = null,
-    help: ?[]const u8 = null,
+    help: []const u8,
 };
 
 pub const Option = struct {
@@ -60,7 +60,7 @@ pub const Option = struct {
     short: ?[]const u8 = null,
     /// Placeholder shown in help. Defaults to "value".
     placeholder: ?[]const u8 = null,
-    help: ?[]const u8 = null,
+    help: []const u8,
     /// Whether the option must appear. Cannot be combined with `default`.
     required: bool = false,
     multiple: bool = false,

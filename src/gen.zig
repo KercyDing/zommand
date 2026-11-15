@@ -249,6 +249,12 @@ fn validateSchema(comptime cli: schema.Cli) void {
 
 fn validateCommand(comptime command: schema.Command) void {
     validateCommandName(command.name);
+    if (command.help.len == 0) {
+        @compileError(std.fmt.comptimePrint(
+            "command '{s}' must have help text",
+            .{command.name},
+        ));
+    }
     _ = schema.commandId(command);
     validateArgs(command.args, command.name, false);
 }
@@ -263,6 +269,17 @@ fn validateArgs(
 
     inline for (args, 0..) |arg, index| {
         _ = schema.argId(arg);
+        const help = switch (arg) {
+            .positional => |value| value.help,
+            .flag => |value| value.help,
+            .option => |value| value.help,
+        };
+        if (help.len == 0) {
+            @compileError(std.fmt.comptimePrint(
+                "argument '{s}' in '{s}' must have help text",
+                .{ schema.argName(arg), owner },
+            ));
+        }
 
         switch (arg) {
             .positional => |value| {

@@ -18,10 +18,12 @@ Declare the schema in ZON:
     .commands = .{
         .{
             .name = "print",
+            .help = "Print hello world",
             .args = .{
                 .{
                     .option = .{
                         .name = "name",
+                        .help = "Name to greet",
                     },
                 },
             },

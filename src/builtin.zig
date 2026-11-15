@@ -129,7 +129,7 @@ fn writeProgram(comptime cli: schema.Cli, writer: *std.Io.Writer) std.Io.Writer.
     try writer.writeAll("\nCommands:\n\n");
     const command_width = @max(min_help_width, commandWidth(cli.commands));
     inline for (cli.commands) |command| {
-        try writeHelpRow(writer, command.name, firstLine(command.help orelse ""), command_width);
+        try writeHelpRow(writer, command.name, firstLine(command.help), command_width);
     }
 
     try writer.writeAll("\nOptions:\n\n");
@@ -144,12 +144,10 @@ fn writeCommand(
     writer: *std.Io.Writer,
     comptime command: schema.Command,
 ) std.Io.Writer.Error!void {
-    if (command.help) |help| {
-        if (help.len != 0) {
-            try writeWrapped(writer, help, max_help_width, 0, 0);
-            try writer.writeByte('\n');
-            try writer.writeByte('\n');
-        }
+    if (command.help.len != 0) {
+        try writeWrapped(writer, command.help, max_help_width, 0, 0);
+        try writer.writeByte('\n');
+        try writer.writeByte('\n');
     }
 
     try writer.print("Usage: {s} {s}", .{ cli.name, command.name });

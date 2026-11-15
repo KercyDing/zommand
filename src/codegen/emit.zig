@@ -291,6 +291,10 @@ fn validateCli(allocator: std.mem.Allocator, cli: schema.Cli) !void {
 
     for (cli.commands, 0..) |command, index| {
         try validateCommandName(command.name);
+        if (command.help.len == 0) {
+            std.log.err("command '{s}' must have help text", .{command.name});
+            return error.InvalidSchema;
+        }
         const id = try resolveId(allocator, command.name);
         _ = try typeName(allocator, id);
         try validateArgs(allocator, command.args, command.name, false);
@@ -366,6 +370,18 @@ fn validateArgs(
 
     for (args, 0..) |arg, index| {
         const id = try resolveId(allocator, schema.argName(arg));
+        const help = switch (arg) {
+            .positional => |value| value.help,
+            .flag => |value| value.help,
+            .option => |value| value.help,
+        };
+        if (help.len == 0) {
+            std.log.err(
+                "argument '{s}' in '{s}' must have help text",
+                .{ schema.argName(arg), owner },
+            );
+            return error.InvalidSchema;
+        }
 
         switch (arg) {
             .positional => |value| {
