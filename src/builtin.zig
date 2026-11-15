@@ -3,8 +3,6 @@ const schema = @import("schema.zig");
 const validate = @import("validate.zig");
 const output = @import("output.zig");
 
-/// Minimum help column: two-space indent and a 16-character label field.
-const min_help_width = 16;
 /// Spaces between the label column and its help text.
 const help_gap = 4;
 /// Preferred maximum help line width.
@@ -129,20 +127,18 @@ fn writeProgram(comptime cli: schema.Cli, writer: *std.Io.Writer) std.Io.Writer.
 
     try writer.print("Usage: {s} [options] <command> [args]\n", .{cli.name});
 
-    const help_width = @max(
-        min_help_width,
-        @max(commandWidth(cli.commands), namedWidth(cli.args, true)),
-    );
+    const command_width = commandWidth(cli.commands);
+    const option_width = namedWidth(cli.args, true);
 
     try writer.writeAll("\nCommands:\n\n");
     inline for (cli.commands) |command| {
-        try writeHelpRow(writer, command.name, firstLine(command.help), help_width);
+        try writeHelpRow(writer, command.name, firstLine(command.help), command_width);
     }
 
     try writer.writeAll("\nOptions:\n\n");
-    try writeNamedRows(cli.args, writer, help_width);
-    try writeHelpRow(writer, "-h, --help", "Print help", help_width);
-    try writeHelpRow(writer, "-V, --version", "Print version", help_width);
+    try writeNamedRows(cli.args, writer, option_width);
+    try writeHelpRow(writer, "-h, --help", "Print help", option_width);
+    try writeHelpRow(writer, "-V, --version", "Print version", option_width);
 }
 
 fn writeCommand(
@@ -171,8 +167,8 @@ fn writeCommand(
     try writer.writeAll(" [options]\n");
 
     const help_width = @max(
-        min_help_width,
-        @max(positionalWidth(command.args), namedWidth(command.args, true)),
+        positionalWidth(command.args),
+        namedWidth(command.args, true),
     );
 
     if (commandHasPositionals(command)) {

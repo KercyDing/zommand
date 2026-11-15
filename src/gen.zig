@@ -747,8 +747,8 @@ test "program help" {
 
     const fetch_column = helpDescriptionColumn(text, "fetch").?;
     const verbose_column = helpDescriptionColumn(text, "-v, --verbose").?;
-    try std.testing.expectEqual(fetch_column, verbose_column);
-    try std.testing.expect(fetch_column >= 2 + "fetch".len + 4);
+    try std.testing.expectEqual(4, fetch_column - (2 + "fetch".len));
+    try std.testing.expectEqual(4, verbose_column - (2 + "-v, --verbose".len));
 }
 
 test "program help starts with usage without help" {
@@ -817,7 +817,7 @@ test "command help" {
     const url_column = helpDescriptionColumn(text, "<URL>").?;
     const path_column = helpDescriptionColumn(text, "-p, --path <dir>").?;
     try std.testing.expectEqual(url_column, path_column);
-    try std.testing.expect(path_column >= 2 + "-p, --path <dir>".len + 4);
+    try std.testing.expectEqual(4, path_column - (2 + "-p, --path <dir>".len));
 }
 
 test "large schema parses within quota" {
