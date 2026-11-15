@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.17.1
+
+      - name: Build
+        run: zig build
+
+      - name: Test
+        run: zig build test
+
+      - name: Check formatting
+        run: >-
+          zig fmt --check
+          build.zig build.zig.zon src
+          examples/*/build.zig examples/*/build.zig.zon examples/*/cli.zon examples/*/src
+
+      - name: Build examples
+        run: |
+          (cd examples/greeting && zig build -Doptimize=safe -Dstrip=true)
+          (cd examples/downloader && zig build -Doptimize=safe -Dstrip=true)
+
+      - name: Test downloader
+        run: (cd examples/downloader && zig build test)
+
+      - name: Check no-argument behavior
+        run: |
+          set +e
+          ./examples/greeting/zig-out/bin/greeting >/tmp/greeting.out 2>/tmp/greeting.err
+          code=$?
+          set -e
+          test "$code" -eq 2
+          grep -q "expected command argument" /tmp/greeting.err
+
+          ./examples/greeting/zig-out/bin/greeting --help \
+            >/tmp/greeting-help.out 2>/tmp/greeting-help.err
+          grep -q "Usage: greeting" /tmp/greeting-help.out
