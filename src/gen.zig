@@ -7,9 +7,6 @@ const schema = @import("schema.zig");
 /// Errors returned when parsing process arguments fails.
 pub const ParseError = parser.ParseError;
 
-/// Errors returned when writing help for an unknown command.
-pub const HelpError = error{UnknownCommand} || std.Io.Writer.Error;
-
 /// Generates a typed parser for a CLI schema, its program-level arguments, and
 /// the application result union.
 ///
@@ -34,16 +31,6 @@ pub fn Generate(
         /// Result of parsing a slice: either parsed values, or a request to
         /// show help/version.
         pub const Outcome = parser.OutcomeType(Globals, Result);
-
-        /// Returns the program name declared in the CLI schema.
-        pub fn programName() []const u8 {
-            return cli.name;
-        }
-
-        /// Returns the configured program version.
-        pub fn version() []const u8 {
-            return cli.version;
-        }
 
         /// Parses process arguments, printing help/version or diagnostics and
         /// exiting. Usage errors exit with code 2; argument read errors exit
@@ -97,27 +84,6 @@ pub fn Generate(
             return parser.parse(cli, Globals, Result, arena, argv, &failure);
         }
 
-        /// Writes program help or command help to `writer`.
-        pub fn writeHelp(
-            writer: *std.Io.Writer,
-            command_name: ?[]const u8,
-        ) HelpError!void {
-            if (command_name) |name| {
-                inline for (cli.commands) |command| {
-                    if (std.mem.eql(u8, command.name, name)) {
-                        return builtin.writeHelp(cli, command, writer);
-                    }
-                }
-                return error.UnknownCommand;
-            }
-            return builtin.writeHelp(cli, null, writer);
-        }
-
-        /// Writes the configured program version to `writer`.
-        pub fn writeVersion(writer: *std.Io.Writer) std.Io.Writer.Error!void {
-            return builtin.writeVersion(cli, writer);
-        }
-
         /// Releases slices allocated for repeated positional arguments and options.
         pub fn deinit(parsed: *Parsed, allocator: std.mem.Allocator) void {
             parser.deinit(cli, Globals, Result, parsed, allocator);
@@ -137,47 +103,7 @@ pub fn Generate(
         fn writeDiagnostic(io: std.Io, err: ParseError, failure: *const parser.Failure) void {
             var message_buffer: [256]u8 = undefined;
             var label_buffer: [256]u8 = undefined;
-
-            const body = switch (err) {
-                error.OutOfMemory => "out of memory",
-                error.ArgumentsUnavailable => "unable to read command-line arguments",
-                error.MissingCommand => "a command is required",
-                error.UnknownCommand => std.fmt.bufPrint(
-                    &message_buffer,
-                    "unknown command '{s}'",
-                    .{failure.token orelse ""},
-                ) catch "unknown command",
-                error.UnknownArgument => std.fmt.bufPrint(
-                    &message_buffer,
-                    "unknown argument '{s}'",
-                    .{failure.token orelse ""},
-                ) catch "unknown argument",
-                error.UnexpectedArgument => std.fmt.bufPrint(
-                    &message_buffer,
-                    "unexpected argument '{s}'",
-                    .{failure.token orelse ""},
-                ) catch "unexpected argument",
-                error.MissingRequiredArgument => std.fmt.bufPrint(
-                    &message_buffer,
-                    "missing required argument '{s}'",
-                    .{argLabel(failure.arg.?, &label_buffer)},
-                ) catch "missing required argument",
-                error.MissingOptionValue => std.fmt.bufPrint(
-                    &message_buffer,
-                    "argument '{s}' requires a value",
-                    .{argLabel(failure.arg.?, &label_buffer)},
-                ) catch "missing option value",
-                error.UnexpectedValue => std.fmt.bufPrint(
-                    &message_buffer,
-                    "argument '{s}' does not take a value",
-                    .{argLabel(failure.arg.?, &label_buffer)},
-                ) catch "unexpected value",
-                error.DuplicateArgument => std.fmt.bufPrint(
-                    &message_buffer,
-                    "argument '{s}' cannot be used multiple times",
-                    .{argLabel(failure.arg.?, &label_buffer)},
-                ) catch "duplicate argument",
-            };
+            const body = diagnosticBody(err, failure, &message_buffer, &label_buffer);
 
             switch (err) {
                 error.OutOfMemory, error.ArgumentsUnavailable => {
@@ -213,12 +139,60 @@ fn argLabel(arg: schema.Arg, buffer: []u8) []const u8 {
     };
 }
 
+fn diagnosticBody(
+    err: ParseError,
+    failure: *const parser.Failure,
+    message_buffer: []u8,
+    label_buffer: []u8,
+) []const u8 {
+    return switch (err) {
+        error.OutOfMemory => "out of memory",
+        error.ArgumentsUnavailable => "unable to read command-line arguments",
+        error.MissingCommand => "a command is required",
+        error.UnknownCommand => std.fmt.bufPrint(
+            message_buffer,
+            "unknown command '{s}'",
+            .{failure.token orelse ""},
+        ) catch "unknown command",
+        error.UnknownArgument => std.fmt.bufPrint(
+            message_buffer,
+            "unknown argument '{s}'",
+            .{failure.token orelse ""},
+        ) catch "unknown argument",
+        error.UnexpectedArgument => std.fmt.bufPrint(
+            message_buffer,
+            "unexpected argument '{s}'",
+            .{failure.token orelse ""},
+        ) catch "unexpected argument",
+        error.MissingRequiredArgument => std.fmt.bufPrint(
+            message_buffer,
+            "missing required argument '{s}'",
+            .{argLabel(failure.arg.?, label_buffer)},
+        ) catch "missing required argument",
+        error.MissingOptionValue => std.fmt.bufPrint(
+            message_buffer,
+            "argument '{s}' requires a value",
+            .{argLabel(failure.arg.?, label_buffer)},
+        ) catch "missing option value",
+        error.UnexpectedValue => std.fmt.bufPrint(
+            message_buffer,
+            "argument '{s}' does not take a value",
+            .{argLabel(failure.arg.?, label_buffer)},
+        ) catch "unexpected value",
+        error.DuplicateArgument => std.fmt.bufPrint(
+            message_buffer,
+            "argument '{s}' cannot be used multiple times",
+            .{argLabel(failure.arg.?, label_buffer)},
+        ) catch "duplicate argument",
+    };
+}
+
 fn validateSchema(comptime cli: schema.Cli) void {
     if (cli.commands.len == 0) {
         @compileError("CLI must contain at least one command");
     }
 
-    validateArgs(cli.args, "program");
+    validateArgs(cli.args, "program", true);
 
     inline for (cli.commands, 0..) |command, index| {
         validateCommand(command);
@@ -273,10 +247,14 @@ fn validateSchema(comptime cli: schema.Cli) void {
 fn validateCommand(comptime command: schema.Command) void {
     validateCommandName(command.name);
     _ = schema.commandId(command);
-    validateArgs(command.args, command.name);
+    validateArgs(command.args, command.name, false);
 }
 
-fn validateArgs(comptime args: []const schema.Arg, comptime owner: []const u8) void {
+fn validateArgs(
+    comptime args: []const schema.Arg,
+    comptime owner: []const u8,
+    comptime is_program: bool,
+) void {
     var multiple_positional = false;
     var optional_positional = false;
 
@@ -285,7 +263,7 @@ fn validateArgs(comptime args: []const schema.Arg, comptime owner: []const u8) v
 
         switch (arg) {
             .positional => |value| {
-                if (std.mem.eql(u8, owner, "program")) {
+                if (is_program) {
                     @compileError("program-level arguments must be flags or options");
                 }
                 if (multiple_positional) {
@@ -359,65 +337,38 @@ fn validateArgs(comptime args: []const schema.Arg, comptime owner: []const u8) v
 }
 
 fn validateCommandName(comptime name: []const u8) void {
-    if (name.len == 0 or name[0] == '-') {
-        @compileError("command name must not be empty or start with '-'");
-    }
-    for (name) |byte| {
-        if (byte == '=' or std.ascii.isWhitespace(byte)) {
-            @compileError("command name must not contain '=' or whitespace");
-        }
+    if (!schema.isValidName(name)) {
+        @compileError(std.fmt.comptimePrint(
+            "invalid command name '{s}'",
+            .{name},
+        ));
     }
 }
 
 fn validateLongName(comptime name: []const u8, comptime owner: []const u8) void {
-    if (name.len == 0 or name[0] == '-') {
+    if (!schema.isValidName(name)) {
         @compileError(std.fmt.comptimePrint(
-            "argument name must not be empty or start with '-' in '{s}'",
-            .{owner},
+            "invalid argument name '{s}' in '{s}'",
+            .{ name, owner },
         ));
-    }
-    for (name) |byte| {
-        if (byte == '=' or std.ascii.isWhitespace(byte)) {
-            @compileError(std.fmt.comptimePrint(
-                "argument name must not contain '=' or whitespace in '{s}'",
-                .{owner},
-            ));
-        }
     }
 }
 
 fn validateDisplayName(comptime name: []const u8, comptime owner: []const u8) void {
-    if (name.len == 0) {
+    if (!schema.isValidDisplayName(name)) {
         @compileError(std.fmt.comptimePrint(
-            "value name must not be empty in '{s}'",
-            .{owner},
+            "invalid placeholder '{s}' in '{s}'",
+            .{ name, owner },
         ));
-    }
-    for (name) |byte| {
-        if (std.ascii.isWhitespace(byte)) {
-            @compileError(std.fmt.comptimePrint(
-                "value name must not contain whitespace in '{s}'",
-                .{owner},
-            ));
-        }
     }
 }
 
 fn validateShort(comptime short: []const u8, comptime owner: []const u8) void {
-    if (short.len != 1) {
+    if (!schema.isValidShort(short)) {
         @compileError(std.fmt.comptimePrint(
-            "short argument must be exactly one byte in '{s}'",
-            .{owner},
-        ));
-    }
-    if (short[0] == '-' or short[0] == '=') {
-        @compileError(std.fmt.comptimePrint(
-            "invalid short argument '-{s}' in '{s}'",
+            "invalid short argument '{s}' in '{s}'",
             .{ short, owner },
         ));
-    }
-    if (short[0] == 'h' or short[0] == 'V') {
-        @compileError("short argument 'h' or 'V' is reserved");
     }
 }
 
@@ -512,10 +463,7 @@ fn expectedType(comptime arg: schema.Arg) type {
         else
             ?[]const u8,
 
-        .flag => |value| if (value.multiple)
-            usize
-        else
-            bool,
+        .flag => bool,
 
         .option => |value| if (value.multiple)
             []const []const u8
@@ -549,7 +497,7 @@ fn hasField(comptime fields: anytype, comptime name: []const u8) bool {
 }
 
 test "parse supports equals, terminator, and clusters" {
-    const Globals = struct { verbose: usize };
+    const Globals = struct { verbose: bool, dry: bool };
     const Run = struct {
         target: ?[]const u8,
         name: ?[]const u8,
@@ -561,7 +509,8 @@ test "parse supports equals, terminator, and clusters" {
         .name = "p",
         .version = "0.0.1",
         .args = &.{
-            .{ .flag = .{ .name = "verbose", .short = "v", .multiple = true } },
+            .{ .flag = .{ .name = "verbose", .short = "v" } },
+            .{ .flag = .{ .name = "dry", .short = "d" } },
         },
         .commands = &.{.{
             .name = "run",
@@ -575,14 +524,15 @@ test "parse supports equals, terminator, and clusters" {
 
     var parsed = switch (try Cli.parseArgs(
         std.testing.allocator,
-        &.{ "p", "-vv", "run", "-n=alice", "--", "-1" },
+        &.{ "p", "-vd", "run", "-n=alice", "--", "-1" },
     )) {
         .parsed => |value| value,
         else => unreachable,
     };
     defer Cli.deinit(&parsed, std.testing.allocator);
 
-    try std.testing.expectEqual(@as(usize, 2), parsed.globals.verbose);
+    try std.testing.expect(parsed.globals.verbose);
+    try std.testing.expect(parsed.globals.dry);
     try std.testing.expectEqualStrings("alice", parsed.command.run.name.?);
     try std.testing.expectEqualStrings("-1", parsed.command.run.target.?);
 }
@@ -746,6 +696,33 @@ test "help used as an option value is not a request" {
     try std.testing.expectEqualStrings("--help", parsed.command.run.target.?);
 }
 
+test "command named program accepts positionals" {
+    const Globals = struct {};
+    const Program = struct { value: []const u8 };
+    const Result = union(enum) { program: Program };
+
+    const Cli = Generate(.{
+        .name = "p",
+        .commands = &.{.{
+            .name = "program",
+            .args = &.{.{
+                .positional = .{ .name = "value", .required = true },
+            }},
+        }},
+    }, Globals, Result);
+
+    var parsed = switch (try Cli.parseArgs(
+        std.testing.allocator,
+        &.{ "p", "program", "value" },
+    )) {
+        .parsed => |value| value,
+        else => unreachable,
+    };
+    defer Cli.deinit(&parsed, std.testing.allocator);
+
+    try std.testing.expectEqualStrings("value", parsed.command.program.value);
+}
+
 test "kebab-case names derive fields" {
     const Globals = struct {};
     const NewProject = struct { dry_run: bool };
@@ -774,56 +751,53 @@ test "kebab-case names derive fields" {
 }
 
 test "version defaults to 0.0.1" {
-    const Globals = struct {};
-    const Run = struct {};
-    const Result = union(enum) { run: Run };
-
-    const Cli = Generate(.{
+    const cli: schema.Cli = .{
         .name = "p",
         .commands = &.{.{ .name = "run" }},
-    }, Globals, Result);
+    };
 
-    try std.testing.expectEqualStrings("0.0.1", Cli.version());
+    try std.testing.expectEqualStrings("0.0.1", cli.version);
 
     var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer out.deinit();
 
-    try Cli.writeVersion(&out.writer);
+    try builtin.writeVersion(cli, &out.writer);
     try std.testing.expectEqualStrings("0.0.1\n", out.writer.buffered());
 }
 
-test "writeHelp looks up a command at runtime" {
-    const Globals = struct {};
-    const Run = struct {};
-    const Result = union(enum) { run: Run };
-
-    const Cli = Generate(.{
+test "help wraps long lines" {
+    const long_help =
+        "This is a deliberately long help sentence that must wrap onto " ++
+        "multiple lines instead of overflowing the terminal width.";
+    const command: schema.Command = .{
+        .name = "run",
+        .help = long_help,
+        .args = &.{.{
+            .option = .{ .name = "output", .help = long_help },
+        }},
+    };
+    const cli: schema.Cli = .{
         .name = "p",
-        .commands = &.{.{ .name = "run" }},
-    }, Globals, Result);
+        .commands = &.{command},
+    };
 
     var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer out.deinit();
 
-    try Cli.writeHelp(&out.writer, "run");
-    try std.testing.expect(std.mem.indexOf(
-        u8,
-        out.writer.buffered(),
-        "Usage: p run [options]",
-    ) != null);
+    try builtin.writeHelp(cli, command, &out.writer);
+    const text = out.writer.buffered();
 
-    try std.testing.expectError(
-        error.UnknownCommand,
-        Cli.writeHelp(&out.writer, "missing"),
-    );
+    var lines = std.mem.splitScalar(u8, text, '\n');
+    var line_count: usize = 0;
+    while (lines.next()) |line| {
+        try std.testing.expect(line.len <= 80);
+        line_count += 1;
+    }
+    try std.testing.expect(line_count > 4);
 }
 
 test "program help" {
-    const Globals = struct { verbose: bool };
-    const Fetch = struct {};
-    const Result = union(enum) { fetch: Fetch };
-
-    const Cli = Generate(.{
+    const cli: schema.Cli = .{
         .name = "zommand",
         .version = "0.0.1",
         .help = "Build CLIs.\nFast and small.",
@@ -832,12 +806,12 @@ test "program help" {
             .name = "fetch",
             .help = "Fetch a package.",
         }},
-    }, Globals, Result);
+    };
 
     var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer out.deinit();
 
-    try Cli.writeHelp(&out.writer, null);
+    try builtin.writeHelp(cli, null, &out.writer);
     const text = out.writer.buffered();
 
     try std.testing.expect(std.mem.startsWith(
@@ -851,20 +825,16 @@ test "program help" {
 }
 
 test "program help starts with usage without help" {
-    const Globals = struct {};
-    const Run = struct {};
-    const Result = union(enum) { run: Run };
-
-    const Cli = Generate(.{
+    const cli: schema.Cli = .{
         .name = "p",
         .version = "0.0.1",
         .commands = &.{.{ .name = "run" }},
-    }, Globals, Result);
+    };
 
     var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer out.deinit();
 
-    try Cli.writeHelp(&out.writer, null);
+    try builtin.writeHelp(cli, null, &out.writer);
     const text = out.writer.buffered();
 
     try std.testing.expect(std.mem.startsWith(
@@ -875,9 +845,6 @@ test "program help starts with usage without help" {
 }
 
 test "command help" {
-    const Globals = struct {};
-    const Download = struct { url: []const u8, path: []const u8 };
-    const Result = union(enum) { download: Download };
     const command: schema.Command = .{
         .name = "download",
         .help = "Download a file.",
@@ -897,16 +864,16 @@ test "command help" {
             } },
         },
     };
-    const Cli = Generate(.{
+    const cli: schema.Cli = .{
         .name = "downloader",
         .version = "0.0.1",
         .commands = &.{command},
-    }, Globals, Result);
+    };
 
     var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer out.deinit();
 
-    try Cli.writeHelp(&out.writer, command.name);
+    try builtin.writeHelp(cli, command, &out.writer);
     const text = out.writer.buffered();
 
     try std.testing.expect(std.mem.indexOf(

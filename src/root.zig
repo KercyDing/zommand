@@ -15,8 +15,6 @@ pub const Arg = schema.Arg;
 pub const Generate = gen.Generate;
 /// Errors returned when parsing process arguments fails.
 pub const ParseError = gen.ParseError;
-/// Errors returned when writing command help fails.
-pub const HelpError = gen.HelpError;
 
 // =============== Tests ===============
 test {

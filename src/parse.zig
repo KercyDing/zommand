@@ -470,8 +470,8 @@ fn finalizeArgs(
                 else
                     null;
             },
-            .flag => |value| {
-                @field(result, schema.argId(arg)) = if (value.multiple) 0 else false;
+            .flag => {
+                @field(result, schema.argId(arg)) = false;
             },
             .option => |value| {
                 @field(result, schema.argId(arg)) = if (value.multiple)
@@ -500,8 +500,8 @@ fn finalizeArgs(
                     return ParseError.DuplicateArgument;
                 }
             },
-            .flag => |value| {
-                if (!value.multiple and count > 1) {
+            .flag => {
+                if (count > 1) {
                     failure.arg = arg;
                     return ParseError.DuplicateArgument;
                 }
@@ -554,12 +554,8 @@ fn finalizeArgs(
                         @field(result, schema.argId(arg)) = match.value.?;
                     }
                 },
-                .flag => |value| {
-                    if (value.multiple) {
-                        @field(result, schema.argId(arg)) += 1;
-                    } else {
-                        @field(result, schema.argId(arg)) = true;
-                    }
+                .flag => {
+                    @field(result, schema.argId(arg)) = true;
                 },
                 .option => |value| {
                     if (value.multiple) {

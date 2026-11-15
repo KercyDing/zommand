@@ -53,24 +53,6 @@ pub fn emit(allocator: std.mem.Allocator, cli: schema.Cli, writer: *std.Io.Write
         \\pub const Outcome = Parser.Outcome;
         \\/// Errors returned when parsing process arguments fails.
         \\pub const ParseError = command.ParseError;
-        \\/// Errors returned when writing help for an unknown command.
-        \\pub const HelpError = command.HelpError;
-        \\
-        \\// =============== Metadata ===============
-        \\/// Returns the program name declared in the CLI schema.
-        \\pub fn programName() []const u8 {
-        \\    return Parser.programName();
-        \\}
-        \\
-        \\/// Returns the configured program version.
-        \\pub fn version() []const u8 {
-        \\    return Parser.version();
-        \\}
-        \\
-        \\/// Writes the configured program version to `writer`.
-        \\pub fn writeVersion(writer: *std.Io.Writer) std.Io.Writer.Error!void {
-        \\    return Parser.writeVersion(writer);
-        \\}
         \\
         \\// =============== Parsing ===============
         \\/// Parses process arguments, exiting with code 2 on usage errors and
@@ -95,15 +77,6 @@ pub fn emit(allocator: std.mem.Allocator, cli: schema.Cli, writer: *std.Io.Write
         \\/// Releases slices allocated for repeated positional arguments and options.
         \\pub fn deinit(parsed: *Parsed, allocator: std.mem.Allocator) void {
         \\    Parser.deinit(parsed, allocator);
-        \\}
-        \\
-        \\// =============== Help ===============
-        \\/// Writes program help or command help to `writer`.
-        \\pub fn writeHelp(
-        \\    writer: *std.Io.Writer,
-        \\    command_name: ?[]const u8,
-        \\) HelpError!void {
-        \\    return Parser.writeHelp(writer, command_name);
         \\}
         \\
     );
@@ -199,7 +172,6 @@ fn writeArg(writer: *std.Io.Writer, indent: usize, arg: schema.Arg) !void {
             try writeField(writer, indent + 2, "name", value.name);
             try writeOptionalField(writer, indent + 2, "short", value.short);
             try writeOptionalField(writer, indent + 2, "help", value.help);
-            try writeBoolField(writer, indent + 2, "multiple", value.multiple);
         },
         .option => |value| {
             try writeIndent(writer, indent + 1);
@@ -257,7 +229,7 @@ fn argType(arg: schema.Arg) []const u8 {
         else
             "?[]const u8",
 
-        .flag => |value| if (value.multiple) "usize" else "bool",
+        .flag => "bool",
 
         .option => |value| if (value.multiple)
             "[]const []const u8"
@@ -491,61 +463,29 @@ fn validateArgs(
 }
 
 fn validateCommandName(name: []const u8) !void {
-    if (name.len == 0 or name[0] == '-') {
-        std.log.err("command name must not be empty or start with '-'", .{});
+    if (!schema.isValidName(name)) {
+        std.log.err("invalid command name '{s}'", .{name});
         return error.InvalidSchema;
-    }
-    for (name) |byte| {
-        if (byte == '=' or std.ascii.isWhitespace(byte)) {
-            std.log.err("command name must not contain '=' or whitespace", .{});
-            return error.InvalidSchema;
-        }
     }
 }
 
 fn validateLongName(name: []const u8, owner: []const u8) !void {
-    if (name.len == 0 or name[0] == '-') {
-        std.log.err(
-            "argument name must not be empty or start with '-' in '{s}'",
-            .{owner},
-        );
+    if (!schema.isValidName(name)) {
+        std.log.err("invalid argument name '{s}' in '{s}'", .{ name, owner });
         return error.InvalidSchema;
-    }
-    for (name) |byte| {
-        if (byte == '=' or std.ascii.isWhitespace(byte)) {
-            std.log.err(
-                "argument name must not contain '=' or whitespace in '{s}'",
-                .{owner},
-            );
-            return error.InvalidSchema;
-        }
     }
 }
 
 fn validateDisplayName(name: []const u8, owner: []const u8) !void {
-    if (name.len == 0) {
-        std.log.err("value name must not be empty in '{s}'", .{owner});
+    if (!schema.isValidDisplayName(name)) {
+        std.log.err("invalid placeholder '{s}' in '{s}'", .{ name, owner });
         return error.InvalidSchema;
-    }
-    for (name) |byte| {
-        if (std.ascii.isWhitespace(byte)) {
-            std.log.err("value name must not contain whitespace in '{s}'", .{owner});
-            return error.InvalidSchema;
-        }
     }
 }
 
 fn validateShort(short: []const u8, owner: []const u8) !void {
-    if (short.len != 1) {
-        std.log.err("short argument must be exactly one byte in '{s}'", .{owner});
-        return error.InvalidSchema;
-    }
-    if (short[0] == '-' or short[0] == '=') {
-        std.log.err("invalid short argument '-{s}' in '{s}'", .{ short, owner });
-        return error.InvalidSchema;
-    }
-    if (short[0] == 'h' or short[0] == 'V') {
-        std.log.err("short argument 'h' or 'V' is reserved", .{});
+    if (!schema.isValidShort(short)) {
+        std.log.err("invalid short argument '{s}' in '{s}'", .{ short, owner });
         return error.InvalidSchema;
     }
 }

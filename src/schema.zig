@@ -52,7 +52,6 @@ pub const Flag = struct {
     name: []const u8,
     short: ?[]const u8 = null,
     help: ?[]const u8 = null,
-    multiple: bool = false,
 };
 
 pub const Option = struct {
@@ -68,6 +67,30 @@ pub const Option = struct {
     /// Value used when the option is absent. Cannot be combined with `required`.
     default: ?[]const u8 = null,
 };
+
+/// Returns true for valid command and argument names.
+pub fn isValidName(name: []const u8) bool {
+    if (name.len == 0 or name[0] == '-') return false;
+    for (name) |byte| {
+        if (byte == '=' or std.ascii.isWhitespace(byte)) return false;
+    }
+    return true;
+}
+
+/// Returns true for valid help placeholders.
+pub fn isValidDisplayName(name: []const u8) bool {
+    if (name.len == 0) return false;
+    for (name) |byte| {
+        if (std.ascii.isWhitespace(byte)) return false;
+    }
+    return true;
+}
+
+/// Returns true for valid short argument names.
+pub fn isValidShort(short: []const u8) bool {
+    if (short.len != 1) return false;
+    return short[0] != '-' and short[0] != '=' and short[0] != 'h' and short[0] != 'V';
+}
 
 /// Returns the command-line name for `arg`.
 pub fn argName(arg: Arg) []const u8 {
@@ -112,6 +135,7 @@ pub fn deriveId(name: []const u8, buffer: []u8) ?[]const u8 {
 }
 
 fn derivedId(comptime name: []const u8) []const u8 {
+    @setEvalBranchQuota(10_000);
     comptime var buffer: [name.len]u8 = undefined;
     const result = deriveId(name, &buffer) orelse {
         @compileError(std.fmt.comptimePrint(
