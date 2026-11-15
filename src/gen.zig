@@ -747,7 +747,7 @@ test "program help" {
 
     const fetch_column = helpDescriptionColumn(text, "fetch").?;
     const verbose_column = helpDescriptionColumn(text, "-v, --verbose").?;
-    try std.testing.expectEqual(4, fetch_column - (2 + "fetch".len));
+    try std.testing.expectEqual(fetch_column, verbose_column);
     try std.testing.expectEqual(4, verbose_column - (2 + "-v, --verbose".len));
 }
 
