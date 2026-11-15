@@ -55,6 +55,11 @@ pub fn Generate(
                 },
             };
 
+            if (slice.len == 1) {
+                writeNoCommandHelp(io);
+                std.process.exit(2);
+            }
+
             const outcome = parser.parse(
                 cli,
                 Globals,
@@ -92,6 +97,23 @@ pub fn Generate(
             parser.deinit(cli, Globals, Result, parsed, allocator);
         }
 
+        fn writeNoCommandHelp(io: std.Io) void {
+            var buffer: [4096]u8 = undefined;
+            const locked = io.lockStderr(&buffer, null) catch return;
+            defer io.unlockStderr();
+            const terminal = locked.terminal();
+
+            builtin.writeHelp(cli, null, terminal.writer) catch {};
+            terminal.writer.writeByte('\n') catch {};
+            std.log.defaultLogFileTerminal(
+                .err,
+                .default,
+                "expected command argument",
+                .{},
+                terminal,
+            ) catch {};
+        }
+
         fn showHelp(io: std.Io, command: ?schema.Command) noreturn {
             if (command) |target| {
                 inline for (cli.commands) |candidate| {
@@ -119,6 +141,14 @@ pub fn Generate(
                 ),
             }
         }
+    };
+}
+
+fn argKind(arg: schema.Arg) []const u8 {
+    return switch (arg) {
+        .positional => "argument",
+        .flag => "flag",
+        .option => "option",
     };
 }
 
@@ -151,41 +181,50 @@ fn diagnosticBody(
     return switch (err) {
         error.OutOfMemory => "out of memory",
         error.ArgumentsUnavailable => "unable to read command-line arguments",
-        error.MissingCommand => "a command is required",
+        error.MissingCommand => "expected command argument",
         error.UnknownCommand => std.fmt.bufPrint(
             message_buffer,
-            "unknown command '{s}'",
+            "unrecognized command '{s}'",
             .{failure.token orelse ""},
-        ) catch "unknown command",
+        ) catch "unrecognized command",
         error.UnknownArgument => std.fmt.bufPrint(
             message_buffer,
-            "unknown argument '{s}'",
+            "unrecognized option '{s}'",
             .{failure.token orelse ""},
-        ) catch "unknown argument",
+        ) catch "unrecognized option",
         error.UnexpectedArgument => std.fmt.bufPrint(
             message_buffer,
-            "unexpected argument '{s}'",
+            "unexpected positional argument '{s}'",
             .{failure.token orelse ""},
-        ) catch "unexpected argument",
+        ) catch "unexpected positional argument",
         error.MissingRequiredArgument => std.fmt.bufPrint(
             message_buffer,
-            "missing required argument '{s}'",
-            .{argLabel(failure.arg.?, label_buffer)},
+            "missing required {s} '{s}'",
+            .{
+                argKind(failure.arg.?),
+                argLabel(failure.arg.?, label_buffer),
+            },
         ) catch "missing required argument",
         error.MissingOptionValue => std.fmt.bufPrint(
             message_buffer,
-            "argument '{s}' requires a value",
+            "expected value after '{s}'",
             .{argLabel(failure.arg.?, label_buffer)},
         ) catch "missing option value",
         error.UnexpectedValue => std.fmt.bufPrint(
             message_buffer,
-            "argument '{s}' does not take a value",
-            .{argLabel(failure.arg.?, label_buffer)},
+            "{s} '{s}' does not take a value",
+            .{
+                argKind(failure.arg.?),
+                argLabel(failure.arg.?, label_buffer),
+            },
         ) catch "unexpected value",
         error.DuplicateArgument => std.fmt.bufPrint(
             message_buffer,
-            "argument '{s}' cannot be used multiple times",
-            .{argLabel(failure.arg.?, label_buffer)},
+            "{s} '{s}' cannot be used multiple times",
+            .{
+                argKind(failure.arg.?),
+                argLabel(failure.arg.?, label_buffer),
+            },
         ) catch "duplicate argument",
     };
 }

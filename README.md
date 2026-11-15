@@ -80,6 +80,8 @@ an explicit argv slice to handle errors yourself.
 - Flags cannot be repeated; non-`multiple` options cannot be repeated.
 - `-h`/`--help` and `-V`/`--version` are reserved. Program-level `Cli.args` are
   accepted before or after the command and returned in `parsed.globals`.
+- Running without arguments prints program help and `expected command argument`
+  to stderr, then exits with code 2.
 - Usage errors go to stderr; `parseOrExit` exits with code 2.
 
 ## Naming
