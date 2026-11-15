@@ -820,6 +820,34 @@ test "command help" {
     try std.testing.expectEqual(4, path_column - (2 + "-p, --path <dir>".len));
 }
 
+test "command help sizes only from displayed options" {
+    const command: schema.Command = .{
+        .name = "use",
+        .help = "Select an installed model profile",
+        .args = &.{.{ .positional = .{
+            .name = "profile",
+            .help = "Model profile",
+            .required = true,
+        } }},
+    };
+    const cli: schema.Cli = .{
+        .name = "kocr",
+        .version = "0.0.1",
+        .commands = &.{command},
+    };
+
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    try builtin.writeHelp(cli, command, &out.writer);
+    const text = out.writer.buffered();
+
+    const profile_column = helpDescriptionColumn(text, "<profile>").?;
+    const help_column = helpDescriptionColumn(text, "-h, --help").?;
+    try std.testing.expectEqual(profile_column, help_column);
+    try std.testing.expectEqual(4, help_column - (2 + "-h, --help".len));
+}
+
 test "large schema parses within quota" {
     const args: []const schema.Arg = &.{
         .{ .positional = .{ .name = "path", .help = "Path", .required = true } },

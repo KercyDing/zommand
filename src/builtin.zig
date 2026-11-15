@@ -167,7 +167,7 @@ fn writeCommand(
 
     const help_width = @max(
         positionalWidth(command.args),
-        namedWidth(command.args, true),
+        @max(namedWidth(command.args, false), "-h, --help".len),
     );
 
     if (commandHasPositionals(command)) {
