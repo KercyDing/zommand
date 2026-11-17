@@ -43,6 +43,11 @@ pub fn evalBranchQuota(comptime cli: anytype) u32 {
         count += @intCast(command.args.len);
     }
     const commands: u32 = @intCast(cli.commands.len);
+    return evalBranchQuotaFor(count, commands);
+}
+
+/// Returns a compile-time branch quota from schema counts.
+pub fn evalBranchQuotaFor(count: u32, commands: u32) u32 {
     return 100_000 + count * 1_000 + commands * commands * 100;
 }
 

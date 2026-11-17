@@ -1,9 +1,6 @@
 const std = @import("std");
 const util = @import("util.zig");
 
-/// Fallback quota for callers that do not provide one.
-const default_eval_branch_quota = 100_000;
-
 /// Calls the `handle<Command>` method on `app` for `parsed.command`.
 ///
 /// Parameters are supplied by type, in any order:
@@ -16,7 +13,8 @@ const default_eval_branch_quota = 100_000;
 /// A command without a `pub` handler is a compile error unless it is listed
 /// in `App.unhandled`.
 pub fn dispatch(init: std.process.Init, parsed: anytype, app: anytype) !void {
-    return dispatchWithQuota(default_eval_branch_quota, init, parsed, app);
+    const Parsed = comptime requireParsed(std.meta.Child(@TypeOf(parsed)));
+    return dispatchWithQuota(comptime quotaFor(Parsed), init, parsed, app);
 }
 
 /// Like `dispatch`, with an explicit compile-time branch quota.
@@ -82,6 +80,25 @@ fn requireParsed(comptime Parsed: type) type {
         else => @compileError("parsed.command must be a union(enum)"),
     }
     return Parsed;
+}
+
+fn quotaFor(comptime Parsed: type) u32 {
+    const Globals = @FieldType(Parsed, "globals");
+    const Result = @FieldType(Parsed, "command");
+    const command_count: u32 = @intCast(@typeInfo(Result).@"union".field_names.len);
+
+    var count: u32 = command_count + @as(u32, @intCast(fieldCount(Globals)));
+    inline for (@typeInfo(Result).@"union".field_types) |Payload| {
+        count += @as(u32, @intCast(fieldCount(Payload)));
+    }
+    return util.evalBranchQuotaFor(count, command_count);
+}
+
+fn fieldCount(comptime T: type) usize {
+    return switch (@typeInfo(T)) {
+        .@"struct" => |info| info.field_names.len,
+        else => 0,
+    };
 }
 
 fn requireApp(comptime AppPtr: type) type {
@@ -198,6 +215,18 @@ fn matchesAnyCommand(comptime entry: []const u8, comptime Result: type) bool {
 fn validateUnhandled(comptime App: type, comptime Parsed: type) void {
     if (!@hasDecl(App, "unhandled")) return;
 
+    switch (@typeInfo(@TypeOf(App.unhandled))) {
+        .@"struct" => |info| {
+            if (!info.is_tuple) @compileError(
+                "App.unhandled must be a tuple or array of command names",
+            );
+        },
+        .array => {},
+        else => @compileError(
+            "App.unhandled must be a tuple or array of command names",
+        ),
+    }
+
     const Result = @FieldType(Parsed, "command");
     inline for (App.unhandled) |entry| {
         if (!matchesAnyCommand(entry, Result)) @compileError(std.fmt.comptimePrint(
@@ -310,6 +339,30 @@ test "unhandled accepts command names" {
     };
 
     try dispatch(init, &parsed, &app);
+}
+
+test "dispatch calls zero-argument handlers" {
+    const Globals = struct {};
+    const Ping = struct {};
+    const Result = union(enum) { ping: Ping };
+    const Parsed = struct { globals: Globals, command: Result };
+
+    const Counter = struct {
+        var calls: usize = 0;
+    };
+
+    const App = struct {
+        pub fn handlePing() void {
+            Counter.calls += 1;
+        }
+    };
+
+    var app = App{};
+    const init: std.process.Init = undefined;
+    var parsed = Parsed{ .globals = .{}, .command = .{ .ping = .{} } };
+
+    try dispatch(init, &parsed, &app);
+    try std.testing.expectEqual(@as(usize, 1), Counter.calls);
 }
 
 test "dispatch propagates handler errors" {

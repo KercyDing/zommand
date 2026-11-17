@@ -170,6 +170,9 @@ Parameters are supplied by type, in any order:
 - the command payload, such as `cli.Print`
 - an `App` field whose type matches exactly, such as `out`
 
+Field matching is by exact type. A bare slice or scalar parameter can silently
+bind to an unrelated `App` field of the same type; use `self.field` for those.
+
 A command without a `pub` handler is a compile error. To skip one
 intentionally, list it on the app:
 
