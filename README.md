@@ -192,6 +192,7 @@ Complete projects live in [`examples`](examples):
 
 - [`greeting`](examples/greeting): minimal schema, one command, one option
 - [`downloader`](examples/downloader): every optional field written out
+- [`dispatcher`](examples/dispatcher): three handlers and one unhandled command
 
 ### Greeting
 
@@ -207,6 +208,17 @@ zig build -Doptimize=safe -Dstrip=true
 cd examples/downloader
 zig build -Doptimize=safe -Dstrip=true
 ./zig-out/bin/downloader --verbose download https://ziglang.org/download/index.json --path ./.zig-cache/tmp
+```
+
+### Dispatcher
+
+```bash
+cd examples/dispatcher
+zig build -Doptimize=safe -Dstrip=true
+./zig-out/bin/dispatcher greet --name zig
+./zig-out/bin/dispatcher sum 2 3
+./zig-out/bin/dispatcher repeat hello --times 2
+./zig-out/bin/dispatcher status  # listed in App.unhandled; no-op
 ```
 
 ## Development

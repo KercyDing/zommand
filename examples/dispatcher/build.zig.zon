@@ -1,0 +1,17 @@
+.{
+    .name = .dispatcher,
+    .version = "0.0.1",
+    .minimum_zig_version = "0.17.1",
+    .fingerprint = 0x3dd6aac3bd631ec,
+    .dependencies = .{
+        .zommand = .{
+            .path = "../..",
+        },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "cli.zon",
+        "src",
+    },
+}

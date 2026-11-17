@@ -1,0 +1,77 @@
+.{
+    .name = "dispatcher",
+    .version = "0.0.1",
+    .help = "Dispatch commands to an application struct.",
+    .args = .{
+        .{
+            .flag = .{
+                .name = "verbose",
+                .short = "v",
+                .help = "Print extra context",
+            },
+        },
+    },
+    .commands = .{
+        .{
+            .name = "greet",
+            .help = "Greet someone",
+            .args = .{
+                .{
+                    .option = .{
+                        .name = "name",
+                        .short = "n",
+                        .placeholder = "name",
+                        .help = "Name to greet",
+                        .default = "world",
+                    },
+                },
+            },
+        },
+        .{
+            .name = "sum",
+            .help = "Add two integers",
+            .args = .{
+                .{
+                    .positional = .{
+                        .name = "a",
+                        .help = "First integer",
+                        .required = true,
+                    },
+                },
+                .{
+                    .positional = .{
+                        .name = "b",
+                        .help = "Second integer",
+                        .required = true,
+                    },
+                },
+            },
+        },
+        .{
+            .name = "repeat",
+            .help = "Repeat text",
+            .args = .{
+                .{
+                    .positional = .{
+                        .name = "text",
+                        .help = "Text to repeat",
+                        .required = true,
+                    },
+                },
+                .{
+                    .option = .{
+                        .name = "times",
+                        .short = "t",
+                        .placeholder = "n",
+                        .help = "Repeat count",
+                        .default = "3",
+                    },
+                },
+            },
+        },
+        .{
+            .name = "status",
+            .help = "Show status (not implemented)",
+        },
+    },
+}

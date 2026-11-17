@@ -27,6 +27,9 @@ clean():
     | cd examples/greeting
     | rm -rf .zig-cache zig-out
 
+    | cd examples/dispatcher
+    | rm -rf .zig-cache zig-out
+
 [help] Format the codebase
 [pass] Formatting complete.
 [fail] Formatting failed.
