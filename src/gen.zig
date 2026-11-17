@@ -315,6 +315,10 @@ fn issueMessage(comptime issue: validate.Issue) []const u8 {
             "commands '{s}' and '{s}' derive the same field '{s}'",
             .{ value.previous, value.current, value.id },
         ),
+        .duplicate_command_case => |value| std.fmt.comptimePrint(
+            "commands '{s}' and '{s}' differ only by case",
+            .{ value.previous, value.current },
+        ),
         .duplicate_argument_id => |value| std.fmt.comptimePrint(
             "arguments '{s}' and '{s}' both derive field '{s}' in '{s}'",
             .{ value.previous, value.current, value.id, value.owner },

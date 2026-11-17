@@ -362,6 +362,10 @@ fn logIssue(issue: validate.Issue) void {
             "commands '{s}' and '{s}' derive the same field '{s}'",
             .{ value.previous, value.current, value.id },
         ),
+        .duplicate_command_case => |value| std.log.err(
+            "commands '{s}' and '{s}' differ only by case",
+            .{ value.previous, value.current },
+        ),
         .duplicate_argument_id => |value| std.log.err(
             "arguments '{s}' and '{s}' both derive field '{s}' in '{s}'",
             .{ value.previous, value.current, value.id, value.owner },

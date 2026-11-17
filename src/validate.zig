@@ -49,6 +49,7 @@ pub const Issue = union(enum) {
     multiple_default: struct { name: []const u8, owner: []const u8 },
     duplicate_command_name: []const u8,
     duplicate_command_id: struct { previous: []const u8, current: []const u8, id: []const u8 },
+    duplicate_command_case: struct { previous: []const u8, current: []const u8 },
     duplicate_argument_id: struct {
         previous: []const u8,
         current: []const u8,
@@ -100,6 +101,12 @@ pub fn check(cli: Cli) ?Issue {
                     .previous = previous.name,
                     .current = command.name,
                     .id = command_id,
+                } };
+            }
+            if (std.ascii.eqlIgnoreCase(command_id, previous_id)) {
+                return .{ .duplicate_command_case = .{
+                    .previous = previous.name,
+                    .current = command.name,
                 } };
             }
         }
@@ -244,4 +251,20 @@ fn checkArgs(args: []const Arg, owner: []const u8, is_program: bool) ?Issue {
     }
 
     return null;
+}
+
+test "rejects commands differing only by case" {
+    const cli: Cli = .{
+        .name = "p",
+        .commands = &.{
+            .{ .name = "image", .help = "Image" },
+            .{ .name = "Image", .help = "Image" },
+        },
+    };
+
+    const issue = check(cli) orelse return error.ExpectedIssue;
+    try std.testing.expect(switch (issue) {
+        .duplicate_command_case => true,
+        else => false,
+    });
 }
