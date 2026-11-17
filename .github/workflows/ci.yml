@@ -44,6 +44,23 @@ jobs:
         run: |
           (cd examples/greeting && zig build -Doptimize=safe -Dstrip=true)
           (cd examples/downloader && zig build -Doptimize=safe -Dstrip=true)
+          (cd examples/dispatcher && zig build -Doptimize=safe -Dstrip=true)
+
+      - name: Check dispatcher command errors
+        run: |
+          set +e
+          ./examples/dispatcher/zig-out/bin/dispatcher status >/tmp/status.out 2>/tmp/status.err
+          code=$?
+          set -e
+          test "$code" -eq 1
+          grep -q "is not implemented" /tmp/status.err
+
+          set +e
+          ./examples/dispatcher/zig-out/bin/dispatcher none >/tmp/none.out 2>/tmp/none.err
+          code=$?
+          set -e
+          test "$code" -eq 2
+          grep -q "unrecognized command 'none'" /tmp/none.err
 
       - name: Test downloader
         run: (cd examples/downloader && zig build test)

@@ -15,6 +15,9 @@ test():
     | cd examples/downloader
     | zig build test
 
+    | cd examples/dispatcher
+    | zig build
+
 [help] Clean zommand build artifacts
 [pass] Clean complete.
 [fail] Clean failed.
