@@ -170,10 +170,17 @@ Parameters are supplied by type, in any order:
 - the command payload, such as `cli.Print`
 - an `App` field whose type matches exactly, such as `out`
 
-A command without a `pub` handler is skipped at compile time. A handler with a
-parameter dispatch cannot supply, or an ambiguous match between two `App`
-fields, is a compile error. `App` fields used by handlers must be initialized
-before `run`.
+A command without a `pub` handler is a compile error. To skip one
+intentionally, list it on the app:
+
+```zig
+pub const unhandled = .{ "install", "uninstall" };
+```
+
+Entries may be CLI names (`new-project`) or generated ids (`new_project`). A
+handler with a parameter dispatch cannot supply, or an ambiguous match between
+two `App` fields, is a compile error. `App` fields used by handlers must be
+initialized before `run`.
 
 `run` keeps `parseOrExit` semantics: `--help`, `--version`, and usage errors
 exit. Use `dispatch` with the `Parsed` value from `parseArgs` to handle errors

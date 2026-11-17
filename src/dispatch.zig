@@ -13,7 +13,8 @@ const default_eval_branch_quota = 100_000;
 /// - the command payload
 /// - an `App` field whose type matches exactly
 ///
-/// Commands without a `pub` handler are skipped at compile time.
+/// A command without a `pub` handler is a compile error unless it is listed
+/// in `App.unhandled`.
 pub fn dispatch(init: std.process.Init, parsed: anytype, app: anytype) !void {
     return dispatchWithQuota(default_eval_branch_quota, init, parsed, app);
 }
@@ -31,11 +32,19 @@ pub fn dispatchWithQuota(
     const App = comptime requireApp(@TypeOf(app));
     const Globals = @FieldType(Parsed, "globals");
 
+    comptime validateUnhandled(App, Parsed);
+
     const globals: Globals = parsed.globals;
     switch (parsed.command) {
         inline else => |payload, tag| {
             const name = comptime handlerName(@tagName(tag));
-            if (!@hasDecl(App, name)) return;
+            if (!@hasDecl(App, name)) {
+                if (comptime isUnhandled(App, @tagName(tag))) return;
+                @compileError(std.fmt.comptimePrint(
+                    "app has no handler for command '{s}' (expected `pub fn {s}(...)`, or list it in `App.unhandled`)",
+                    .{ @tagName(tag), name },
+                ));
+            }
 
             const handler = @field(App, name);
             validateHandler(handler, name);
@@ -162,6 +171,42 @@ fn handlerName(comptime command_id: []const u8) []const u8 {
     return std.fmt.comptimePrint("handle{s}", .{util.toPascalComptime(command_id)});
 }
 
+fn unhandledMatches(comptime entry: []const u8, comptime command_id: []const u8) bool {
+    if (std.mem.eql(u8, entry, command_id)) return true;
+
+    comptime var buffer: [util.max_name_len]u8 = undefined;
+    const id = util.toSnake(entry, &buffer) orelse return false;
+    return std.mem.eql(u8, id, command_id);
+}
+
+fn isUnhandled(comptime App: type, comptime command_id: []const u8) bool {
+    if (!@hasDecl(App, "unhandled")) return false;
+
+    inline for (App.unhandled) |entry| {
+        if (unhandledMatches(entry, command_id)) return true;
+    }
+    return false;
+}
+
+fn matchesAnyCommand(comptime entry: []const u8, comptime Result: type) bool {
+    inline for (@typeInfo(Result).@"union".field_names) |tag| {
+        if (unhandledMatches(entry, tag)) return true;
+    }
+    return false;
+}
+
+fn validateUnhandled(comptime App: type, comptime Parsed: type) void {
+    if (!@hasDecl(App, "unhandled")) return;
+
+    const Result = @FieldType(Parsed, "command");
+    inline for (App.unhandled) |entry| {
+        if (!matchesAnyCommand(entry, Result)) @compileError(std.fmt.comptimePrint(
+            "unhandled entry '{s}' does not match any command",
+            .{entry},
+        ));
+    }
+}
+
 test "dispatch injects arguments by type" {
     const Globals = struct { verbose: bool };
     const Image = struct { path: []const u8, detect: bool };
@@ -225,6 +270,8 @@ test "dispatch skips commands without a handler" {
     const App = struct {
         calls: usize = 0,
 
+        pub const unhandled = .{"missing"};
+
         pub fn handleSeen(self: *@This()) void {
             self.calls += 1;
         }
@@ -243,6 +290,26 @@ test "dispatch skips commands without a handler" {
     parsed.command = .{ .missing = .{} };
     try dispatch(init, &parsed, &app);
     try std.testing.expectEqual(@as(usize, 1), app.calls);
+}
+
+test "unhandled accepts command names" {
+    const Globals = struct {};
+    const NewProject = struct {};
+    const Result = union(enum) { new_project: NewProject };
+    const Parsed = struct { globals: Globals, command: Result };
+
+    const App = struct {
+        pub const unhandled = .{"new-project"};
+    };
+
+    var app = App{};
+    const init: std.process.Init = undefined;
+    var parsed = Parsed{
+        .globals = .{},
+        .command = .{ .new_project = .{} },
+    };
+
+    try dispatch(init, &parsed, &app);
 }
 
 test "dispatch propagates handler errors" {

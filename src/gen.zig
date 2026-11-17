@@ -105,7 +105,7 @@ pub fn Generate(
         }
 
         /// Parses process arguments and calls the matching `handle<Command>`
-        /// method on `app`. Commands without a `pub` handler are skipped.
+        /// method on `app`. Missing handlers must be listed in `App.unhandled`.
         pub fn run(init: std.process.Init, app: anytype) !void {
             const parsed = parseOrExit(init);
             return dispatcher.dispatchWithQuota(
