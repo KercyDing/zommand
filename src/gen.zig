@@ -39,11 +39,12 @@ pub fn Generate(
         /// Parses process arguments from `std.process.Init`, printing
         /// help/version or diagnostics and exiting when needed.
         pub fn parseOrExit(init: std.process.Init) Parsed {
-            return parseOrExitArgs(init.io, init.arena.allocator(), init.minimal.args);
+            return parseOrExitArgs(init.io, init.environ_map, init.arena.allocator(), init.minimal.args);
         }
 
         fn parseOrExitArgs(
             io: std.Io,
+            environ: *const std.process.Environ.Map,
             arena: std.mem.Allocator,
             args: std.process.Args,
         ) Parsed {
@@ -82,7 +83,7 @@ pub fn Generate(
 
             switch (outcome) {
                 .parsed => |parsed| return parsed,
-                .help => |command| showHelp(io, command),
+                .help => |command| showHelp(io, environ, command),
                 .version => builtin.showVersion(io, cli),
             }
         }
@@ -138,9 +139,9 @@ pub fn Generate(
             var buffer: [4096]u8 = undefined;
             const locked = io.lockStderr(&buffer, null) catch return;
             defer io.unlockStderr();
-            const terminal = locked.terminal();
+            var terminal = locked.terminal();
 
-            builtin.writeHelp(cli, null, terminal.writer) catch {};
+            builtin.writeHelpTerminal(cli, null, &terminal) catch {};
             terminal.writer.writeByte('\n') catch {};
             std.log.defaultLogFileTerminal(
                 .err,
@@ -151,16 +152,16 @@ pub fn Generate(
             ) catch {};
         }
 
-        fn showHelp(io: std.Io, command: ?schema.Command) noreturn {
+        fn showHelp(io: std.Io, environ: *const std.process.Environ.Map, command: ?schema.Command) noreturn {
             if (command) |target| {
                 inline for (cli.commands) |candidate| {
                     if (std.mem.eql(u8, candidate.name, target.name)) {
-                        builtin.showHelp(io, cli, candidate);
+                        builtin.showHelp(io, environ, cli, candidate);
                     }
                 }
                 unreachable;
             }
-            builtin.showHelp(io, cli, null);
+            builtin.showHelp(io, environ, cli, null);
         }
 
         fn writeDiagnostic(io: std.Io, err: ParseError, failure: *const parser.Failure) void {
@@ -172,11 +173,10 @@ pub fn Generate(
                 error.OutOfMemory, error.ArgumentsUnavailable => {
                     output.printError(io, "{s}", .{body});
                 },
-                else => output.printError(
-                    io,
-                    "{s}\nTry '{s} --help' for more information.",
-                    .{ body, cli.name },
-                ),
+                else => {
+                    output.printError(io, "{s}", .{body});
+                    output.printHint(io, "Try '{s} --help' for more information.\n", .{cli.name});
+                },
             }
         }
     };
@@ -851,7 +851,7 @@ test "program help" {
     try std.testing.expectEqual(4, verbose_column - (2 + "-v, --verbose".len));
 }
 
-test "program help starts with usage without help" {
+test "program help starts with usage" {
     const cli: schema.Cli = .{
         .name = "p",
         .version = "0.0.1",
@@ -869,6 +869,51 @@ test "program help starts with usage without help" {
         text,
         "Usage: p [options] <command> [args]\n",
     ));
+}
+
+test "help colors" {
+    const cli: schema.Cli = .{
+        .name = "p",
+        .version = "0.0.1",
+        .commands = &.{.{ .name = "run", .help = "Run command" }},
+        .args = &.{.{ .flag = .{ .name = "verbose", .short = "v", .help = "Verbose output" } }},
+    };
+
+    var out: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer out.deinit();
+
+    var terminal: std.Io.Terminal = .{ .writer = &out.writer, .mode = .escape_codes };
+    try builtin.writeHelpTerminal(cli, null, &terminal);
+    const text = out.writer.buffered();
+
+    try std.testing.expect(std.mem.indexOf(u8, text, "\x1b[36mUsage:") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text, "\x1b[1mp") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text, "\x1b[33m") != null);
+    try std.testing.expect(std.mem.indexOf(u8, text, "\x1b[0m") != null);
+    // The no-color mode produces exactly the plain text.
+    var plain: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer plain.deinit();
+    try builtin.writeHelp(cli, null, &plain.writer);
+    const stripped = try stripAnsi(std.testing.allocator, text);
+    defer std.testing.allocator.free(stripped);
+    try std.testing.expectEqualStrings(plain.writer.buffered(), stripped);
+}
+
+fn stripAnsi(allocator: std.mem.Allocator, text: []const u8) ![]u8 {
+    var out: std.Io.Writer.Allocating = .init(allocator);
+    errdefer out.deinit();
+    var i: usize = 0;
+    while (i < text.len) {
+        if (text[i] == '\x1b' and i + 1 < text.len and text[i + 1] == '[') {
+            i += 2;
+            while (i < text.len and (text[i] < 0x40 or text[i] > 0x7e)) i += 1;
+            if (i < text.len) i += 1;
+        } else {
+            try out.writer.writeByte(text[i]);
+            i += 1;
+        }
+    }
+    return out.toOwnedSlice();
 }
 
 test "command help" {

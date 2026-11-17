@@ -1,6 +1,7 @@
 const dispatch = @import("dispatch.zig");
 const gen = @import("gen.zig");
 const schema = @import("schema.zig");
+const style = @import("style.zig");
 const util = @import("util.zig");
 const validate = @import("validate.zig");
 
@@ -26,6 +27,7 @@ test {
     std.testing.refAllDecls(dispatch);
     std.testing.refAllDecls(gen);
     std.testing.refAllDecls(schema);
+    std.testing.refAllDecls(style);
     std.testing.refAllDecls(util);
     std.testing.refAllDecls(validate);
 }

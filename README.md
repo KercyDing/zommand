@@ -120,6 +120,14 @@ struct; see [Dispatch helpers](#dispatch-helpers).
   to stderr, then exits with code 2.
 - Usage errors go to stderr; `parseOrExit` exits with code 2.
 
+## Colors
+
+Help and usage errors are colored when the stream is a terminal: section
+headers cyan, command and option names bold, placeholders yellow, hints gray,
+and errors red. `NO_COLOR` (non-empty) disables colors and `CLICOLOR_FORCE`
+forces them. Windows consoles that cannot enable ANSI use the console API;
+redirected output stays plain text.
+
 ## Naming
 
 `name` is both the CLI token and the source for the Zig field and generated
