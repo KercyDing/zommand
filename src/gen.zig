@@ -109,21 +109,19 @@ pub fn Generate(
         /// listed commands fail at runtime.
         pub fn run(init: std.process.Init, app: anytype) !void {
             const parsed = parseOrExit(init);
-            dispatcher.dispatchWithQuota(
+            if (dispatcher.unhandledCommand(&parsed, app)) |command_id| {
+                std.log.err(
+                    "command '{s}' is not implemented",
+                    .{commandDisplayName(cli, command_id)},
+                );
+                std.process.exit(1);
+            }
+            return dispatcher.dispatchWithQuota(
                 comptime util.evalBranchQuota(cli),
                 init,
                 &parsed,
                 app,
-            ) catch |err| switch (err) {
-                error.CommandNotImplemented => {
-                    std.log.err(
-                        "command '{s}' is not implemented",
-                        .{dispatcher.commandName(&parsed)},
-                    );
-                    std.process.exit(1);
-                },
-                else => return err,
-            };
+            );
         }
 
         /// Calls the matching `handle<Command>` method on `app` for `parsed`.
@@ -459,6 +457,24 @@ fn hasField(comptime fields: anytype, comptime name: []const u8) bool {
         if (std.mem.eql(u8, field, name)) return true;
     }
     return false;
+}
+
+fn commandDisplayName(comptime cli: schema.Cli, command_id: []const u8) []const u8 {
+    inline for (cli.commands) |command| {
+        var buffer: [util.max_name_len]u8 = undefined;
+        const id = util.toSnake(command.name, &buffer) orelse unreachable;
+        if (std.mem.eql(u8, id, command_id)) return command.name;
+    }
+    unreachable;
+}
+
+test "command display name keeps dashes" {
+    const cli: schema.Cli = .{
+        .name = "p",
+        .commands = &.{.{ .name = "new-project", .help = "New project" }},
+    };
+
+    try std.testing.expectEqualStrings("new-project", commandDisplayName(cli, "new_project"));
 }
 
 test "dispatch calls app handlers" {

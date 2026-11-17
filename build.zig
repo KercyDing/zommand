@@ -31,6 +31,7 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&codegen.step);
 
     const invalid_fixtures = .{
+        "test/invalid/case-command.zon",
         "test/invalid/empty-name.zon",
         "test/invalid/missing-help.zon",
     };
@@ -41,6 +42,31 @@ pub fn build(b: *std.Build) void {
         _ = invalid.addOutputFileArg("cli.zig");
         invalid.expectExitCode(1);
         test_step.dependOn(&invalid.step);
+    }
+
+    const dispatch_failures = .{
+        .{ .name = "missing_handler", .expect = "app has no handler for command 'foo' (expected `pub fn handleFoo(...)`, or list it in `App.unhandled`)" },
+        .{ .name = "unknown_unhandled", .expect = "unhandled entry 'typo' does not match any command" },
+        .{ .name = "malformed_unhandled", .expect = "App.unhandled must be a tuple or array of command names" },
+        .{ .name = "ambiguous_field", .expect = "App has multiple fields of type '*Io.Writer'; take 'self' and use the field explicitly" },
+        .{ .name = "bad_return", .expect = "handler 'handleFoo' must return 'void' or '!void'" },
+    };
+
+    inline for (dispatch_failures) |fixture| {
+        const fail_mod = b.createModule(.{
+            .root_source_file = b.path("test/dispatch/" ++ fixture.name ++ ".zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "command", .module = lib_mod },
+            },
+        });
+        const fail = b.addExecutable(.{
+            .name = fixture.name,
+            .root_module = fail_mod,
+        });
+        fail.expect_errors = .{ .contains = fixture.expect };
+        test_step.dependOn(&fail.step);
     }
 }
 

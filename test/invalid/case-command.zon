@@ -1,0 +1,13 @@
+.{
+    .name = "p",
+    .commands = .{
+        .{
+            .name = "image",
+            .help = "Image",
+        },
+        .{
+            .name = "Image",
+            .help = "Image",
+        },
+    },
+}

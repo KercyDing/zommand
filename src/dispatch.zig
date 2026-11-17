@@ -197,6 +197,24 @@ pub fn commandName(parsed: anytype) []const u8 {
     };
 }
 
+/// Returns the selected command's id when it has no handler and is listed in
+/// `App.unhandled`.
+pub fn unhandledCommand(parsed: anytype, app: anytype) ?[]const u8 {
+    const Parsed = comptime requireParsed(std.meta.Child(@TypeOf(parsed)));
+    const App = comptime requireApp(@TypeOf(app));
+    comptime validateUnhandled(App, Parsed);
+
+    return switch (parsed.command) {
+        inline else => |_, tag| blk: {
+            const command_id = @tagName(tag);
+            const name = comptime handlerName(command_id);
+            if (@hasDecl(App, name)) break :blk null;
+            if (comptime isUnhandled(App, command_id)) break :blk command_id;
+            break :blk null;
+        },
+    };
+}
+
 fn unhandledMatches(comptime entry: []const u8, comptime command_id: []const u8) bool {
     if (std.mem.eql(u8, entry, command_id)) return true;
 
@@ -324,9 +342,11 @@ test "unhandled commands return an error" {
 
     try dispatch(init, &parsed, &app);
     try std.testing.expectEqual(@as(usize, 1), app.calls);
+    try std.testing.expect(unhandledCommand(&parsed, &app) == null);
 
     parsed.command = .{ .missing = .{} };
     try std.testing.expectEqualStrings("missing", commandName(&parsed));
+    try std.testing.expectEqualStrings("missing", unhandledCommand(&parsed, &app).?);
     try std.testing.expectError(error.CommandNotImplemented, dispatch(init, &parsed, &app));
     try std.testing.expectEqual(@as(usize, 1), app.calls);
 }
@@ -349,6 +369,7 @@ test "unhandled accepts command names" {
     };
 
     try std.testing.expectEqualStrings("new_project", commandName(&parsed));
+    try std.testing.expectEqualStrings("new_project", unhandledCommand(&parsed, &app).?);
     try std.testing.expectError(error.CommandNotImplemented, dispatch(init, &parsed, &app));
 }
 
