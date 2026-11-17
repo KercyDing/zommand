@@ -1,7 +1,7 @@
 const std = @import("std");
-const schema = @import("schema.zig");
-const validate = @import("validate.zig");
 const output = @import("output.zig");
+const schema = @import("schema.zig");
+const util = @import("util.zig");
 
 /// Spaces between the label column and its help text.
 const help_gap = 4;
@@ -84,7 +84,7 @@ pub fn writeHelp(
     comptime command: ?schema.Command,
     writer: *std.Io.Writer,
 ) std.Io.Writer.Error!void {
-    @setEvalBranchQuota(comptime validate.evalBranchQuota(cli));
+    @setEvalBranchQuota(comptime util.evalBranchQuota(cli));
     if (command) |cmd| {
         try writeCommand(cli, writer, cmd);
     } else {

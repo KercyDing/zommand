@@ -1,16 +1,14 @@
 const std = @import("std");
 
 const schema = @import("schema.zig");
+const util = @import("util.zig");
 
 const Arg = schema.Arg;
 const Cli = schema.Cli;
 
-/// Maximum accepted length for names and placeholders.
-pub const max_name_len = 64;
-
 /// Returns true for valid command and argument names.
 pub fn isValidName(name: []const u8) bool {
-    if (name.len == 0 or name.len > max_name_len or name[0] == '-') return false;
+    if (name.len == 0 or name.len > util.max_name_len or name[0] == '-') return false;
     for (name) |byte| {
         if (byte == '=' or std.ascii.isWhitespace(byte)) return false;
     }
@@ -19,7 +17,7 @@ pub fn isValidName(name: []const u8) bool {
 
 /// Returns true for valid help placeholders.
 pub fn isValidDisplayName(name: []const u8) bool {
-    if (name.len == 0 or name.len > max_name_len) return false;
+    if (name.len == 0 or name.len > util.max_name_len) return false;
     for (name) |byte| {
         if (std.ascii.isWhitespace(byte)) return false;
     }
@@ -30,16 +28,6 @@ pub fn isValidDisplayName(name: []const u8) bool {
 pub fn isValidShort(short: []const u8) bool {
     if (short.len != 1) return false;
     return short[0] != '-' and short[0] != '=' and short[0] != 'h' and short[0] != 'V';
-}
-
-/// Returns a compile-time branch quota based on schema size.
-pub fn evalBranchQuota(comptime cli: Cli) u32 {
-    var count: u32 = @intCast(cli.args.len + cli.commands.len);
-    for (cli.commands) |command| {
-        count += @intCast(command.args.len);
-    }
-    const commands: u32 = @intCast(cli.commands.len);
-    return 100_000 + count * 1_000 + commands * commands * 100;
 }
 
 /// Schema validation failure. Shared by code generation and `Generate`.
@@ -88,8 +76,8 @@ pub fn check(cli: Cli) ?Issue {
             return .{ .invalid_command_name = command.name };
         }
 
-        var command_buffer: [max_name_len]u8 = undefined;
-        const command_id = schema.deriveId(command.name, &command_buffer) orelse {
+        var command_buffer: [util.max_name_len]u8 = undefined;
+        const command_id = util.toSnake(command.name, &command_buffer) orelse {
             return .{ .invalid_identifier = .{ .name = command.name, .owner = "program" } };
         };
 
@@ -103,8 +91,8 @@ pub fn check(cli: Cli) ?Issue {
                 return .{ .duplicate_command_name = command.name };
             }
 
-            var previous_buffer: [max_name_len]u8 = undefined;
-            const previous_id = schema.deriveId(previous.name, &previous_buffer) orelse {
+            var previous_buffer: [util.max_name_len]u8 = undefined;
+            const previous_id = util.toSnake(previous.name, &previous_buffer) orelse {
                 return .{ .invalid_identifier = .{ .name = previous.name, .owner = "program" } };
             };
             if (std.mem.eql(u8, command_id, previous_id)) {
@@ -156,8 +144,8 @@ fn checkArgs(args: []const Arg, owner: []const u8, is_program: bool) ?Issue {
             return .{ .invalid_identifier = .{ .name = name, .owner = owner } };
         }
 
-        var id_buffer: [max_name_len]u8 = undefined;
-        const id = schema.deriveId(name, &id_buffer) orelse {
+        var id_buffer: [util.max_name_len]u8 = undefined;
+        const id = util.toSnake(name, &id_buffer) orelse {
             return .{ .invalid_identifier = .{ .name = name, .owner = owner } };
         };
 
@@ -224,8 +212,8 @@ fn checkArgs(args: []const Arg, owner: []const u8, is_program: bool) ?Issue {
         }
 
         for (args[0..index]) |previous| {
-            var previous_buffer: [max_name_len]u8 = undefined;
-            const previous_id = schema.deriveId(schema.argName(previous), &previous_buffer) orelse {
+            var previous_buffer: [util.max_name_len]u8 = undefined;
+            const previous_id = util.toSnake(schema.argName(previous), &previous_buffer) orelse {
                 return .{ .invalid_identifier = .{
                     .name = schema.argName(previous),
                     .owner = owner,

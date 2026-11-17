@@ -3,6 +3,7 @@ const builtin = @import("builtin.zig");
 const output = @import("output.zig");
 const parser = @import("parse.zig");
 const schema = @import("schema.zig");
+const util = @import("util.zig");
 const validate = @import("validate.zig");
 
 /// Errors returned when parsing process arguments fails.
@@ -18,7 +19,7 @@ pub fn Generate(
     comptime GlobalsType: type,
     comptime ResultType: type,
 ) type {
-    @setEvalBranchQuota(comptime validate.evalBranchQuota(cli));
+    @setEvalBranchQuota(comptime util.evalBranchQuota(cli));
     validateSchema(cli);
     validateGlobals(cli, GlobalsType);
     validateResult(cli, ResultType);
@@ -45,7 +46,7 @@ pub fn Generate(
             arena: std.mem.Allocator,
             args: std.process.Args,
         ) Parsed {
-            @setEvalBranchQuota(comptime validate.evalBranchQuota(cli));
+            @setEvalBranchQuota(comptime util.evalBranchQuota(cli));
             var failure: parser.Failure = .{};
             const slice = args.toSlice(arena) catch |err| switch (err) {
                 error.OutOfMemory => {
@@ -91,14 +92,14 @@ pub fn Generate(
             arena: std.mem.Allocator,
             argv: []const [:0]const u8,
         ) ParseError!Outcome {
-            @setEvalBranchQuota(comptime validate.evalBranchQuota(cli));
+            @setEvalBranchQuota(comptime util.evalBranchQuota(cli));
             var failure: parser.Failure = .{};
             return parser.parse(cli, Globals, Result, arena, argv, &failure);
         }
 
         /// Releases slices allocated for repeated positional arguments and options.
         pub fn deinit(parsed: *Parsed, allocator: std.mem.Allocator) void {
-            @setEvalBranchQuota(comptime validate.evalBranchQuota(cli));
+            @setEvalBranchQuota(comptime util.evalBranchQuota(cli));
             parser.deinit(cli, Globals, Result, parsed, allocator);
         }
 

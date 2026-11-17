@@ -1,5 +1,6 @@
 const std = @import("std");
 const schema = @import("../schema.zig");
+const util = @import("../util.zig");
 const validate = @import("../validate.zig");
 
 /// Emits a typed CLI module from a schema.
@@ -244,7 +245,7 @@ fn resolveId(
     const buffer = try allocator.alloc(u8, name.len);
     defer allocator.free(buffer);
 
-    const id = schema.deriveId(name, buffer) orelse {
+    const id = util.toSnake(name, buffer) orelse {
         std.log.err(
             "name '{s}' is invalid: it must convert to a Zig identifier",
             .{name},
@@ -255,26 +256,13 @@ fn resolveId(
 }
 
 fn typeName(allocator: std.mem.Allocator, id: []const u8) ![]const u8 {
-    var result: std.ArrayList(u8) = .empty;
-    errdefer result.deinit(allocator);
-
-    var capitalize = true;
-    for (id) |byte| {
-        if (byte == '_') {
-            capitalize = true;
-            continue;
-        }
-        const output = if (capitalize) std.ascii.toUpper(byte) else byte;
-        try result.append(allocator, output);
-        capitalize = false;
-    }
-
-    const name = try result.toOwnedSlice(allocator);
-    if (!std.zig.isValidId(name)) {
-        std.log.err("cannot derive a valid type name from '{s}'", .{id});
-        return error.InvalidSchema;
-    }
-    return name;
+    return util.toPascal(allocator, id) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        error.InvalidIdentifier => {
+            std.log.err("cannot derive a valid type name from '{s}'", .{id});
+            return error.InvalidSchema;
+        },
+    };
 }
 
 fn validateCli(allocator: std.mem.Allocator, cli: schema.Cli) !void {

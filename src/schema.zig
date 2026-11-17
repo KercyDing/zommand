@@ -1,4 +1,5 @@
 const std = @import("std");
+const util = @import("util.zig");
 
 /// Runtime CLI schema used by generated parsers.
 pub const Cli = struct {
@@ -113,23 +114,9 @@ pub fn commandId(comptime command: Command) []const u8 {
     return derivedId(command.name);
 }
 
-/// Converts `name` to a Zig identifier by replacing `-` with `_`.
-/// Returns null when the result is not a valid identifier.
-pub fn deriveId(name: []const u8, buffer: []u8) ?[]const u8 {
-    if (buffer.len < name.len) return null;
-
-    for (name, 0..) |byte, index| {
-        buffer[index] = if (byte == '-') '_' else byte;
-    }
-
-    const result = buffer[0..name.len];
-    if (!std.zig.isValidId(result)) return null;
-    return result;
-}
-
 fn derivedId(comptime name: []const u8) []const u8 {
     comptime var buffer: [name.len]u8 = undefined;
-    return deriveId(name, &buffer) orelse {
+    return util.toSnake(name, &buffer) orelse {
         @compileError(std.fmt.comptimePrint(
             "name '{s}' is invalid: it must convert to a Zig identifier",
             .{name},

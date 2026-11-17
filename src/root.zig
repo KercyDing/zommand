@@ -1,5 +1,6 @@
-const schema = @import("schema.zig");
 const gen = @import("gen.zig");
+const schema = @import("schema.zig");
+const util = @import("util.zig");
 const validate = @import("validate.zig");
 
 // =============== Types ===============
@@ -21,7 +22,8 @@ pub const ParseError = gen.ParseError;
 test {
     const std = @import("std");
 
-    std.testing.refAllDecls(schema);
     std.testing.refAllDecls(gen);
+    std.testing.refAllDecls(schema);
+    std.testing.refAllDecls(util);
     std.testing.refAllDecls(validate);
 }
