@@ -77,6 +77,18 @@ pub fn emit(allocator: std.mem.Allocator, cli: schema.Cli, writer: *std.Io.Write
         \\    Parser.deinit(parsed, allocator);
         \\}
         \\
+        \\// =============== Dispatch ===============
+        \\/// Parses process arguments and calls the matching `handle<Command>`
+        \\/// method on `app`. Commands without a `pub` handler are skipped.
+        \\pub fn run(init: std.process.Init, app: anytype) !void {
+        \\    return Parser.run(init, app);
+        \\}
+        \\
+        \\/// Calls the matching `handle<Command>` method on `app` for `parsed`.
+        \\pub fn dispatch(init: std.process.Init, parsed: *const Parsed, app: anytype) !void {
+        \\    return Parser.dispatch(init, parsed, app);
+        \\}
+        \\
     );
 }
 

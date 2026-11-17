@@ -104,6 +104,9 @@ var parsed = switch (outcome) {
 defer cli.deinit(&parsed, arena);
 ```
 
+`run` and `dispatch` are optional helpers that call methods on an application
+struct; see [Dispatch helpers](#dispatch-helpers).
+
 ## Command line
 
 - `--name value`, `--name=value`, `-n value`, `-nvalue`, `-n=value`, and
@@ -132,6 +135,49 @@ and `placeholder` only affects help:
 ```
 
 See [`src/schema.zig`](src/schema.zig) for all fields.
+
+## Dispatch helpers
+
+`run` can call a method on an application struct instead of switching on
+`Result`:
+
+```zig
+const std = @import("std");
+const cli = @import("cli");
+
+const App = struct {
+    pub fn handlePrint(self: *App, print: cli.Print) void {
+        _ = self;
+        std.debug.print("hello, {s}!\n", .{print.name orelse "world"});
+    }
+};
+
+pub fn main(init: std.process.Init) !void {
+    var app = App{};
+    try cli.run(init, &app);
+}
+```
+
+Handlers are named `handle` plus the command type name: `print` maps to
+`handlePrint`, and `new-project` maps to `handleNewProject`. They must be `pub`
+and return `void` or `!void`.
+
+Parameters are supplied by type, in any order:
+
+- `*App` or `*const App`
+- `std.process.Init`
+- the program-level `Globals`
+- the command payload, such as `cli.Print`
+- an `App` field whose type matches exactly, such as `out`
+
+A command without a `pub` handler is skipped at compile time. A handler with a
+parameter dispatch cannot supply, or an ambiguous match between two `App`
+fields, is a compile error. `App` fields used by handlers must be initialized
+before `run`.
+
+`run` keeps `parseOrExit` semantics: `--help`, `--version`, and usage errors
+exit. Use `dispatch` with the `Parsed` value from `parseArgs` to handle errors
+and help yourself.
 
 ## Examples
 

@@ -1,5 +1,6 @@
 const std = @import("std");
 const builtin = @import("builtin.zig");
+const dispatcher = @import("dispatch.zig");
 const output = @import("output.zig");
 const parser = @import("parse.zig");
 const schema = @import("schema.zig");
@@ -101,6 +102,28 @@ pub fn Generate(
         pub fn deinit(parsed: *Parsed, allocator: std.mem.Allocator) void {
             @setEvalBranchQuota(comptime util.evalBranchQuota(cli));
             parser.deinit(cli, Globals, Result, parsed, allocator);
+        }
+
+        /// Parses process arguments and calls the matching `handle<Command>`
+        /// method on `app`. Commands without a `pub` handler are skipped.
+        pub fn run(init: std.process.Init, app: anytype) !void {
+            const parsed = parseOrExit(init);
+            return dispatcher.dispatchWithQuota(
+                comptime util.evalBranchQuota(cli),
+                init,
+                &parsed,
+                app,
+            );
+        }
+
+        /// Calls the matching `handle<Command>` method on `app` for `parsed`.
+        pub fn dispatch(init: std.process.Init, parsed: *const Parsed, app: anytype) !void {
+            return dispatcher.dispatchWithQuota(
+                comptime util.evalBranchQuota(cli),
+                init,
+                parsed,
+                app,
+            );
         }
 
         fn writeNoCommandHelp(io: std.Io) void {
@@ -422,6 +445,52 @@ fn hasField(comptime fields: anytype, comptime name: []const u8) bool {
         if (std.mem.eql(u8, field, name)) return true;
     }
     return false;
+}
+
+test "dispatch calls app handlers" {
+    const Globals = struct { verbose: bool };
+    const Run = struct { target: []const u8 };
+    const Result = union(enum) { run: Run };
+
+    const Cli = Generate(.{
+        .name = "p",
+        .version = "0.0.1",
+        .args = &.{.{ .flag = .{ .name = "verbose", .short = "v", .help = "Verbose output" } }},
+        .commands = &.{.{
+            .name = "run",
+            .help = "Run command",
+            .args = &.{.{
+                .positional = .{ .name = "target", .help = "Target", .required = true },
+            }},
+        }},
+    }, Globals, Result);
+
+    const App = struct {
+        calls: usize = 0,
+        target: []const u8 = "",
+
+        pub fn handleRun(self: *@This(), args: Run, globals: Globals) void {
+            self.calls += 1;
+            self.target = args.target;
+            _ = globals;
+        }
+    };
+
+    var parsed = switch (try Cli.parseArgs(
+        std.testing.allocator,
+        &.{ "p", "--verbose", "run", "x" },
+    )) {
+        .parsed => |value| value,
+        else => unreachable,
+    };
+    defer Cli.deinit(&parsed, std.testing.allocator);
+
+    var app = App{};
+    const init: std.process.Init = undefined;
+    try Cli.dispatch(init, &parsed, &app);
+
+    try std.testing.expectEqual(@as(usize, 1), app.calls);
+    try std.testing.expectEqualStrings("x", app.target);
 }
 
 test "parse supports equals, terminator, and clusters" {

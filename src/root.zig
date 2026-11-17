@@ -1,3 +1,4 @@
+const dispatch = @import("dispatch.zig");
 const gen = @import("gen.zig");
 const schema = @import("schema.zig");
 const util = @import("util.zig");
@@ -22,6 +23,7 @@ pub const ParseError = gen.ParseError;
 test {
     const std = @import("std");
 
+    std.testing.refAllDecls(dispatch);
     std.testing.refAllDecls(gen);
     std.testing.refAllDecls(schema);
     std.testing.refAllDecls(util);
