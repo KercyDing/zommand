@@ -169,14 +169,36 @@ pub fn Generate(
             var label_buffer: [1024]u8 = undefined;
             const body = diagnosticBody(err, failure, &message_buffer, &label_buffer);
 
-            switch (err) {
-                error.OutOfMemory, error.ArgumentsUnavailable => {
-                    output.printError(io, "{s}", .{body});
-                },
-                else => {
-                    output.printError(io, "{s}", .{body});
+            output.printError(io, "{s}", .{body});
+
+            const suggestion: ?[]const u8 = switch (err) {
+                error.UnknownCommand => suggestCommand(cli, failure.token orelse ""),
+                error.UnknownArgument => suggestLong(cli, failure.selected, failure.token orelse ""),
+                else => null,
+            };
+            if (suggestion) |name| {
+                switch (err) {
+                    error.UnknownCommand => output.printHint(io, "Did you mean '{s}'?\n", .{name}),
+                    error.UnknownArgument => output.printHint(io, "Did you mean '--{s}'?\n", .{name}),
+                    else => unreachable,
+                }
+                return;
+            }
+
+            const show_help = switch (err) {
+                error.MissingRequiredArgument, error.MissingOptionValue, error.UnknownCommand, error.UnknownArgument => true,
+                else => false,
+            };
+            if (show_help) {
+                if (failure.selected) |command_index| {
+                    output.printHint(
+                        io,
+                        "Try '{s} {s} --help' for more information.\n",
+                        .{ cli.name, cli.commands[command_index].name },
+                    );
+                } else {
                     output.printHint(io, "Try '{s} --help' for more information.\n", .{cli.name});
-                },
+                }
             }
         }
     };
@@ -208,6 +230,99 @@ fn argLabel(arg: schema.Arg, buffer: []u8) []const u8 {
             .{value.name},
         ) catch unreachable,
     };
+}
+
+const suggestion_limit = 2;
+const max_suggestion_name = 128;
+
+fn isNamedArg(arg: schema.Arg) bool {
+    return switch (arg) {
+        .positional => false,
+        .flag, .option => true,
+    };
+}
+
+fn suggestCommand(comptime cli: schema.Cli, token: []const u8) ?[]const u8 {
+    if (token.len < 3) return null;
+    var best: ?[]const u8 = null;
+    var best_distance: usize = suggestion_limit + 1;
+    inline for (cli.commands) |command| {
+        considerSuggestion(command.name, token, &best, &best_distance);
+    }
+    return best;
+}
+
+fn suggestLong(comptime cli: schema.Cli, selected: ?usize, token: []const u8) ?[]const u8 {
+    if (!std.mem.startsWith(u8, token, "--")) return null;
+    const body = token[2..];
+    const name = body[0 .. std.mem.indexOfScalar(u8, body, '=') orelse body.len];
+    if (name.len < 3) return null;
+
+    var best: ?[]const u8 = null;
+    var best_distance: usize = suggestion_limit + 1;
+    inline for (cli.args) |arg| {
+        if (isNamedArg(arg)) considerSuggestion(schema.argName(arg), name, &best, &best_distance);
+    }
+    if (selected) |command_index| {
+        inline for (cli.commands, 0..) |command, candidate| {
+            if (command_index == candidate) {
+                inline for (command.args) |arg| {
+                    if (isNamedArg(arg)) considerSuggestion(schema.argName(arg), name, &best, &best_distance);
+                }
+            }
+        }
+    }
+    considerSuggestion("help", name, &best, &best_distance);
+    considerSuggestion("version", name, &best, &best_distance);
+    return best;
+}
+
+fn considerSuggestion(
+    candidate: []const u8,
+    token: []const u8,
+    best: *?[]const u8,
+    best_distance: *usize,
+) void {
+    if (candidate.len < 3) return;
+
+    var distance = distanceWithin(candidate, token, suggestion_limit) orelse suggestion_limit + 1;
+    if (distance > suggestion_limit) {
+        if (token.len < 3 or candidate.len <= token.len or !std.ascii.startsWithIgnoreCase(candidate, token)) return;
+        distance = suggestion_limit;
+    }
+    // An exact match is not a misspelling: `--help=1` is rejected for its value,
+    // not for its name.
+    if (distance == 0 or distance >= best_distance.*) return;
+    best.* = candidate;
+    best_distance.* = distance;
+}
+
+fn distanceWithin(a: []const u8, b: []const u8, limit: usize) ?usize {
+    if (a.len > max_suggestion_name or b.len > max_suggestion_name) return null;
+
+    var previous_buffer: [max_suggestion_name + 1]usize = undefined;
+    var current_buffer: [max_suggestion_name + 1]usize = undefined;
+    var previous: []usize = &previous_buffer;
+    var current: []usize = &current_buffer;
+    for (0..b.len + 1) |index| previous[index] = index;
+
+    for (a, 0..) |a_char, i| {
+        current[0] = i + 1;
+        var row_min = current[0];
+        for (b, 0..) |b_char, j| {
+            const substitution: usize = if (std.ascii.toLower(a_char) == std.ascii.toLower(b_char)) 0 else 1;
+            current[j + 1] = @min(
+                @min(previous[j + 1] + 1, current[j] + 1),
+                previous[j] + substitution,
+            );
+            row_min = @min(row_min, current[j + 1]);
+        }
+        if (row_min > limit) return null;
+        std.mem.swap([]usize, &previous, &current);
+    }
+
+    const distance = previous[b.len];
+    return if (distance <= limit) distance else null;
 }
 
 fn diagnosticBody(
@@ -664,6 +779,28 @@ test "repeated non-multiple arguments are rejected" {
             &.{ "p", "run", "--name", "a", "--name", "b" },
         ),
     );
+}
+
+test "suggests names" {
+    const command: schema.Command = .{
+        .name = "install",
+        .help = "Install",
+        .args = &.{.{ .flag = .{ .name = "force", .help = "Force" } }},
+    };
+    const cli: schema.Cli = .{
+        .name = "p",
+        .commands = &.{command},
+        .args = &.{.{ .option = .{ .name = "verbose", .help = "Verbose" } }},
+    };
+
+    try std.testing.expectEqualStrings("install", suggestCommand(cli, "instal").?);
+    try std.testing.expectEqualStrings("force", suggestLong(cli, 0, "--forc=1").?);
+    try std.testing.expectEqualStrings("verbose", suggestLong(cli, null, "--verbos").?);
+    try std.testing.expect(suggestCommand(cli, "abc") == null);
+    // An exact name with a value is not a misspelling.
+    try std.testing.expect(suggestLong(cli, null, "--help=1") == null);
+    // Short options have no spelling to correct.
+    try std.testing.expect(suggestLong(cli, null, "-Z") == null);
 }
 
 test "help and version requests" {

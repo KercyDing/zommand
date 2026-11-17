@@ -19,6 +19,9 @@ pub const ParseError = error{
 pub const Failure = struct {
     token: ?[]const u8 = null,
     arg: ?schema.Arg = null,
+    /// Command selected when the failure occurred, so diagnostics suggest
+    /// options of the command instead of another command's.
+    selected: ?usize = null,
 };
 
 /// Values returned by a successful parse.
@@ -79,6 +82,7 @@ pub fn parse(
 
     while (index < argv.len) : (index += 1) {
         const token: []const u8 = argv[index];
+        failure.selected = selected;
 
         if (!options_done and std.mem.eql(u8, token, "--")) {
             options_done = true;
@@ -133,6 +137,7 @@ pub fn parse(
     const command_index = selected orelse return ParseError.MissingCommand;
 
     var parsed: ParsedType(Globals, Result) = undefined;
+    failure.selected = null;
     parsed.globals = try finalizeArgs(
         cli.args,
         Globals,
@@ -146,6 +151,7 @@ pub fn parse(
     inline for (cli.commands, 0..) |command, candidate| {
         if (command_index == candidate) {
             const id = comptime schema.commandId(command);
+            failure.selected = candidate;
             const command_value = try finalizeArgs(
                 command.args,
                 @FieldType(Result, id),
