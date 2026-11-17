@@ -173,17 +173,18 @@ Parameters are supplied by type, in any order:
 Field matching is by exact type. A bare slice or scalar parameter can silently
 bind to an unrelated `App` field of the same type; use `self.field` for those.
 
-A command without a `pub` handler is a compile error. To skip one
-intentionally, list it on the app:
+A command without a `pub` handler is a compile error unless it is listed in
+`App.unhandled`. Listed commands are recognized but fail at runtime:
 
 ```zig
 pub const unhandled = .{ "install", "uninstall" };
 ```
 
-Entries may be CLI names (`new-project`) or generated ids (`new_project`). A
-handler with a parameter dispatch cannot supply, or an ambiguous match between
-two `App` fields, is a compile error. `App` fields used by handlers must be
-initialized before `run`.
+Entries may be CLI names (`new-project`) or generated ids (`new_project`).
+Listed commands return `error.CommandNotImplemented`; `run` prints the error
+and exits 1. A handler with a parameter dispatch cannot supply, or an ambiguous
+match between two `App` fields, is a compile error. `App` fields used by
+handlers must be initialized before `run`.
 
 `run` keeps `parseOrExit` semantics: `--help`, `--version`, and usage errors
 exit. Use `dispatch` with the `Parsed` value from `parseArgs` to handle errors
@@ -221,7 +222,7 @@ zig build -Doptimize=safe -Dstrip=true
 ./zig-out/bin/dispatcher greet --name zig
 ./zig-out/bin/dispatcher sum 2 3
 ./zig-out/bin/dispatcher repeat hello --times 2
-./zig-out/bin/dispatcher status  # listed in App.unhandled; no-op
+./zig-out/bin/dispatcher status  # listed in App.unhandled; exits 1
 ```
 
 ## Development

@@ -105,15 +105,25 @@ pub fn Generate(
         }
 
         /// Parses process arguments and calls the matching `handle<Command>`
-        /// method on `app`. Missing handlers must be listed in `App.unhandled`.
+        /// method on `app`. Missing handlers must be listed in `App.unhandled`;
+        /// listed commands fail at runtime.
         pub fn run(init: std.process.Init, app: anytype) !void {
             const parsed = parseOrExit(init);
-            return dispatcher.dispatchWithQuota(
+            dispatcher.dispatchWithQuota(
                 comptime util.evalBranchQuota(cli),
                 init,
                 &parsed,
                 app,
-            );
+            ) catch |err| switch (err) {
+                error.CommandNotImplemented => {
+                    std.log.err(
+                        "command '{s}' is not implemented",
+                        .{dispatcher.commandName(&parsed)},
+                    );
+                    std.process.exit(1);
+                },
+                else => return err,
+            };
         }
 
         /// Calls the matching `handle<Command>` method on `app` for `parsed`.

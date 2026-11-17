@@ -79,7 +79,8 @@ pub fn emit(allocator: std.mem.Allocator, cli: schema.Cli, writer: *std.Io.Write
         \\
         \\// =============== Dispatch ===============
         \\/// Parses process arguments and calls the matching `handle<Command>`
-        \\/// method on `app`. Missing handlers must be listed in `App.unhandled`.
+        \\/// method on `app`. Missing handlers must be listed in `App.unhandled`;
+        \\/// listed commands fail at runtime.
         \\pub fn run(init: std.process.Init, app: anytype) !void {
         \\    return Parser.run(init, app);
         \\}

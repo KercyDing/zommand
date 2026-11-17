@@ -11,7 +11,7 @@ const util = @import("util.zig");
 /// - an `App` field whose type matches exactly
 ///
 /// A command without a `pub` handler is a compile error unless it is listed
-/// in `App.unhandled`.
+/// in `App.unhandled`. Listed commands return `error.CommandNotImplemented`.
 pub fn dispatch(init: std.process.Init, parsed: anytype, app: anytype) !void {
     const Parsed = comptime requireParsed(std.meta.Child(@TypeOf(parsed)));
     return dispatchWithQuota(comptime quotaFor(Parsed), init, parsed, app);
@@ -37,7 +37,9 @@ pub fn dispatchWithQuota(
         inline else => |payload, tag| {
             const name = comptime handlerName(@tagName(tag));
             if (!@hasDecl(App, name)) {
-                if (comptime isUnhandled(App, @tagName(tag))) return;
+                if (comptime isUnhandled(App, @tagName(tag))) {
+                    return error.CommandNotImplemented;
+                }
                 @compileError(std.fmt.comptimePrint(
                     "app has no handler for command '{s}' (expected `pub fn {s}(...)`, or list it in `App.unhandled`)",
                     .{ @tagName(tag), name },
@@ -188,6 +190,13 @@ fn handlerName(comptime command_id: []const u8) []const u8 {
     return std.fmt.comptimePrint("handle{s}", .{util.toPascalComptime(command_id)});
 }
 
+/// Returns the tag name of the selected command.
+pub fn commandName(parsed: anytype) []const u8 {
+    return switch (parsed.command) {
+        inline else => |_, tag| @tagName(tag),
+    };
+}
+
 fn unhandledMatches(comptime entry: []const u8, comptime command_id: []const u8) bool {
     if (std.mem.eql(u8, entry, command_id)) return true;
 
@@ -289,7 +298,7 @@ test "dispatch injects arguments by type" {
     try std.testing.expectEqualStrings("x.png:1\nlist\n", writer.buffered());
 }
 
-test "dispatch skips commands without a handler" {
+test "unhandled commands return an error" {
     const Globals = struct {};
     const Seen = struct {};
     const Missing = struct {};
@@ -317,7 +326,8 @@ test "dispatch skips commands without a handler" {
     try std.testing.expectEqual(@as(usize, 1), app.calls);
 
     parsed.command = .{ .missing = .{} };
-    try dispatch(init, &parsed, &app);
+    try std.testing.expectEqualStrings("missing", commandName(&parsed));
+    try std.testing.expectError(error.CommandNotImplemented, dispatch(init, &parsed, &app));
     try std.testing.expectEqual(@as(usize, 1), app.calls);
 }
 
@@ -338,7 +348,8 @@ test "unhandled accepts command names" {
         .command = .{ .new_project = .{} },
     };
 
-    try dispatch(init, &parsed, &app);
+    try std.testing.expectEqualStrings("new_project", commandName(&parsed));
+    try std.testing.expectError(error.CommandNotImplemented, dispatch(init, &parsed, &app));
 }
 
 test "dispatch calls zero-argument handlers" {
