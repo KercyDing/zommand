@@ -16,9 +16,10 @@ pub const Cli = struct {
     ///
     /// They are accepted before and after the command. Positional arguments
     /// are not allowed here because the first bare token selects the command.
+    /// Accepts a single argument or an array of arguments.
     args: []const Arg = &.{},
 
-    /// Available subcommands.
+    /// Available subcommands. Accepts a single command or an array of commands.
     commands: []const Command = &.{},
 };
 
@@ -28,7 +29,8 @@ pub const Command = struct {
     name: []const u8,
     /// Help text shown in the command list and command help.
     help: []const u8,
-    /// Arguments owned by this command.
+    /// Arguments owned by this command. Accepts a single argument or an array
+    /// of arguments.
     args: []const Arg = &.{},
 };
 

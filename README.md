@@ -26,16 +26,34 @@ Declare the schema in ZON:
             .name = "print",
             .help = "Print hello world",
             .args = .{
-                .{
-                    .option = .{
-                        .name = "name",
-                        .help = "Name to greet",
-                    },
+                .option = .{
+                    .name = "name",
+                    .help = "Name to greet",
                 },
             },
         },
     },
 }
+```
+
+`args` accepts either a single argument (as above) or a list of arguments.
+`commands` likewise accepts a single command or a list:
+
+```zig
+.args = .{
+    .{
+        .option = .{
+            .name = "name",
+            .help = "Name to greet",
+        },
+    },
+    .{
+        .flag = .{
+            .name = "verbose",
+            .help = "Verbose output",
+        },
+    },
+},
 ```
 
 Generate a module from it in `build.zig`:

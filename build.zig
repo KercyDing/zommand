@@ -26,8 +26,13 @@ pub fn build(b: *std.Build) void {
         .root_module = lib_mod,
     });
 
+    const codegen_tests = b.addTest(.{
+        .root_module = codegen_mod,
+    });
+
     const test_step = b.step("test", "Run zommand tests");
     test_step.dependOn(&b.addRunArtifact(lib_tests).step);
+    test_step.dependOn(&b.addRunArtifact(codegen_tests).step);
     test_step.dependOn(&codegen.step);
 
     const invalid_fixtures = .{
