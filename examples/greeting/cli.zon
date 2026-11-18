@@ -1,16 +1,12 @@
 .{
     .name = "greeting",
     .commands = .{
-        .{
-            .name = "print",
-            .help = "Print hello world",
-            .args = .{
-                .{
-                    .option = .{
-                        .name = "name",
-                        .help = "Name to greet",
-                    },
-                },
+        .name = "print",
+        .help = "Print hello world",
+        .args = .{
+            .option = .{
+                .name = "name",
+                .help = "Name to greet",
             },
         },
     },

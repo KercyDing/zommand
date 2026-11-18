@@ -3,38 +3,31 @@
     .version = "0.0.1",
     .help = "Download files from URLs.",
     .args = .{
-        .{
-            .flag = .{
-                .name = "verbose",
-                .short = "v",
-                .help = "Verbose output",
-            },
+        .flag = .{
+            .name = "verbose",
+            .short = "v",
+            .help = "Verbose output",
         },
     },
     .commands = .{
-        .{
-            .name = "download",
-            .help = "Download a file",
-            .args = .{
-                .{
-                    .positional = .{
-                        .name = "url",
-                        .placeholder = "URL",
-                        .help = "File URL",
-                        .required = true,
-                        .multiple = false,
-                    },
+        .name = "download",
+        .help = "Download a file",
+        .args = .{
+            .{
+                .positional = .{
+                    .name = "url",
+                    .placeholder = "URL",
+                    .help = "File URL",
+                    .required = true,
                 },
-                .{
-                    .option = .{
-                        .name = "path",
-                        .short = "p",
-                        .placeholder = "dir",
-                        .help = "Directory to save the file",
-                        .required = false,
-                        .multiple = false,
-                        .default = ".",
-                    },
+            },
+            .{
+                .option = .{
+                    .name = "path",
+                    .short = "p",
+                    .placeholder = "dir",
+                    .help = "Directory to save the file",
+                    .default = ".",
                 },
             },
         },
