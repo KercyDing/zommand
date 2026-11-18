@@ -32,9 +32,10 @@ const App = struct {
 };
 
 pub fn main(init: std.process.Init) !void {
-    var buffer: [4096]u8 = undefined;
-    var file_writer = std.Io.File.stdout().writerStreaming(init.io, &buffer);
-    const out = &file_writer.interface;
+    var stdout_buffer: [4096]u8 = undefined;
+    var stdout_writer = std.Io.File.stdout().writerStreaming(init.io, &stdout_buffer);
+
+    const out = &stdout_writer.interface;
     defer out.flush() catch {};
 
     var app = App{ .out = out };
