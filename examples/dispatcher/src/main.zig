@@ -21,13 +21,12 @@ const App = struct {
         }
     }
 
-    pub fn handleRepeat(self: *@This(), out: *std.Io.Writer, args: cli.Repeat) !void {
-        _ = self;
+    pub fn handleRepeat(self: *@This(), args: cli.Repeat) !void {
         const times = try std.fmt.parseInt(usize, args.times, 10);
 
         var index: usize = 0;
         while (index < times) : (index += 1) {
-            try out.print("{s}\n", .{args.text});
+            try self.out.print("{s}\n", .{args.text});
         }
     }
 };

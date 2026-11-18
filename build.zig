@@ -48,7 +48,7 @@ pub fn build(b: *std.Build) void {
         .{ .name = "missing_handler", .expect = "app has no handler for command 'foo' (expected `pub fn handleFoo(...)`, or list it in `App.unhandled`)" },
         .{ .name = "unknown_unhandled", .expect = "unhandled entry 'typo' does not match any command" },
         .{ .name = "malformed_unhandled", .expect = "App.unhandled must be a tuple or array of command names" },
-        .{ .name = "ambiguous_field", .expect = "App has multiple fields of type '*Io.Writer'; take 'self' and use the field explicitly" },
+        .{ .name = "field_injection", .expect = "cannot be supplied by dispatch (expected 'App', '*App', '*const App', std.process.Init, globals, or the command payload)" },
         .{ .name = "bad_return", .expect = "handler 'handleFoo' must return 'void' or '!void'" },
     };
 

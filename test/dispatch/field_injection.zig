@@ -12,7 +12,6 @@ const Cli = command.Generate(.{
 
 const App = struct {
     out: *std.Io.Writer,
-    err: *std.Io.Writer,
 
     pub fn handleFoo(self: *@This(), out: *std.Io.Writer) void {
         _ = self;
@@ -22,7 +21,7 @@ const App = struct {
 
 pub fn main() void {
     const init: std.process.Init = undefined;
-    var app = App{ .out = undefined, .err = undefined };
+    var app = App{ .out = undefined };
     var parsed = Cli.Parsed{ .globals = .{}, .command = .{ .foo = .{} } };
     Cli.dispatch(init, &parsed, &app) catch {};
 }

@@ -5,10 +5,10 @@ const util = @import("util.zig");
 ///
 /// Parameters are supplied by type, in any order:
 /// - `*App` or `*const App`
+/// - `App` (copied)
 /// - `std.process.Init`
 /// - program-level globals
 /// - the command payload
-/// - an `App` field whose type matches exactly
 ///
 /// A command without a `pub` handler is a compile error unless it is listed
 /// in `App.unhandled`. Listed commands return `error.CommandNotImplemented`.
@@ -158,32 +158,18 @@ fn resolve(
     comptime handler: []const u8,
     comptime index: usize,
 ) T {
+    if (T == App) return app.*;
     if (T == *App) return app;
     if (T == *const App) return app;
     if (T == std.process.Init) return init;
     if (T == @TypeOf(globals)) return globals;
     if (T == @TypeOf(payload)) return payload;
-    if (comptime appFieldFor(T, App)) |name| return @field(app, name);
 
     @compileError(std.fmt.comptimePrint(
-        "handler '{s}' parameter {d} of type '{s}' cannot be supplied by dispatch",
+        "handler '{s}' parameter {d} of type '{s}' cannot be supplied by dispatch " ++
+            "(expected 'App', '*App', '*const App', std.process.Init, globals, or the command payload)",
         .{ handler, index, @typeName(T) },
     ));
-}
-
-fn appFieldFor(comptime T: type, comptime App: type) ?[]const u8 {
-    const info = @typeInfo(App).@"struct";
-    comptime var found: ?[]const u8 = null;
-    inline for (info.field_names, info.field_types) |name, FieldType| {
-        if (FieldType == T) {
-            if (found != null) @compileError(std.fmt.comptimePrint(
-                "App has multiple fields of type '{s}'; take 'self' and use the field explicitly",
-                .{@typeName(T)},
-            ));
-            found = name;
-        }
-    }
-    return found;
 }
 
 fn handlerName(comptime command_id: []const u8) []const u8 {
@@ -280,18 +266,17 @@ test "dispatch injects arguments by type" {
             args: Image,
             globals: Globals,
             init: std.process.Init,
-            out: *std.Io.Writer,
         ) !void {
             _ = init;
             self.calls += 1;
             self.last = args.path;
-            try out.print("{s}:{d}\n", .{ args.path, @intFromBool(globals.verbose) });
+            try self.out.print("{s}:{d}\n", .{ args.path, @intFromBool(globals.verbose) });
         }
 
-        pub fn handleList(self: *@This(), out: *std.Io.Writer) void {
+        pub fn handleList(self: *@This()) void {
             self.calls += 1;
             self.last = "list";
-            out.writeAll("list\n") catch {};
+            self.out.writeAll("list\n") catch {};
         }
     };
 
@@ -314,6 +299,30 @@ test "dispatch injects arguments by type" {
     try std.testing.expectEqual(@as(usize, 2), app.calls);
     try std.testing.expectEqualStrings("list", app.last);
     try std.testing.expectEqualStrings("x.png:1\nlist\n", writer.buffered());
+}
+
+test "dispatch copies value receivers" {
+    const Globals = struct {};
+    const Show = struct { path: []const u8 };
+    const Result = union(enum) { show: Show };
+    const Parsed = struct { globals: Globals, command: Result };
+
+    const App = struct {
+        out: *std.Io.Writer,
+
+        pub fn handleShow(self: @This(), args: Show) void {
+            self.out.print("{s}\n", .{args.path}) catch {};
+        }
+    };
+
+    var buffer: [32]u8 = undefined;
+    var writer: std.Io.Writer = .fixed(&buffer);
+    var app = App{ .out = &writer };
+    const init: std.process.Init = undefined;
+    var parsed = Parsed{ .globals = .{}, .command = .{ .show = .{ .path = "x" } } };
+
+    try dispatch(init, &parsed, &app);
+    try std.testing.expectEqualStrings("x\n", writer.buffered());
 }
 
 test "unhandled commands return an error" {

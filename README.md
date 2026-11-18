@@ -173,13 +173,13 @@ and return `void` or `!void`.
 Parameters are supplied by type, in any order:
 
 - `*App` or `*const App`
+- `App`, copied
 - `std.process.Init`
 - the program-level `Globals`
 - the command payload, such as `cli.Print`
-- an `App` field whose type matches exactly, such as `out`
 
-Field matching is by exact type. A bare slice or scalar parameter can silently
-bind to an unrelated `App` field of the same type; use `self.field` for those.
+Only these types are injected. Anything else, including an `App` field, is a
+compile error; reach fields through `self.field` instead.
 
 A command without a `pub` handler is a compile error unless it is listed in
 `App.unhandled`. Listed commands are recognized but fail at runtime:
@@ -190,9 +190,8 @@ pub const unhandled = .{ "install", "uninstall" };
 
 Entries may be CLI names (`new-project`) or generated ids (`new_project`).
 Listed commands return `error.CommandNotImplemented`; `run` prints the error
-and exits 1. A handler with a parameter dispatch cannot supply, or an ambiguous
-match between two `App` fields, is a compile error. `App` fields used by
-handlers must be initialized before `run`.
+and exits 1. A handler with a parameter dispatch cannot supply is a compile
+error. `App` fields used by handlers must be initialized before `run`.
 
 `run` keeps `parseOrExit` semantics: `--help`, `--version`, and usage errors
 exit. Use `dispatch` with the `Parsed` value from `parseArgs` to handle errors
